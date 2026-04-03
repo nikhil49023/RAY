@@ -1,0 +1,58 @@
+# Memory System Configuration
+
+collections:
+  docs_index:
+    name: "ray_docs"
+    description: "Document and codebase chunks"
+    
+  behavior_index:
+    name: "ray_behavior"
+    description: "User preferences and behavioral rules"
+    
+  execution_index:
+    name: "ray_execution"
+    description: "Previous plans and workflow history"
+
+promotion_rules:
+  # Signals for persistent memory
+  persistent_signals:
+    - "always"
+    - "never"
+    - "prefer"
+    - "avoid"
+    - "my style"
+    - "for me"
+    - "from now on"
+    - "remember"
+    - "don't"
+    - "minimalist"
+    - "concise"
+    - "detailed"
+  
+  # Signals for ephemeral memory (do not promote)
+  ephemeral_signals:
+    - "today"
+    - "right now"
+    - "currently"
+    - "this time"
+    - "at the moment"
+    - "just now"
+    - "temporary"
+
+retrieval:
+  # Layer priorities (1 = highest)
+  layer_priority:
+    behavioral: 1
+    documents: 2
+    execution: 3
+  
+  # Top-k per layer
+  top_k:
+    behavioral: 4
+    documents: 3
+    execution: 2
+
+embeddings:
+  provider: "ollama"
+  model: "nomic-embed-text"
+  dimension: 768

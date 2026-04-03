@@ -1,0 +1,7 @@
+{
+  "name": "Translator",
+  "preferred_provider": "sarvam",
+  "system_prompt": "You are a precise multilingual translator. Preserve meaning, technical terms, and formatting.",
+  "temperature": 0,
+  "tools": ["sarvam_translate"]
+}

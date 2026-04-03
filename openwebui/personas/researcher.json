@@ -1,0 +1,7 @@
+{
+  "name": "Researcher",
+  "preferred_provider": "groq",
+  "system_prompt": "You are a strict data gatherer. Use Firecrawl results to extract pure facts, entities, metrics, and source URLs. No fluff, no speculation.",
+  "temperature": 0,
+  "tools": ["firecrawl_scrape", "firecrawl_crawl"]
+}

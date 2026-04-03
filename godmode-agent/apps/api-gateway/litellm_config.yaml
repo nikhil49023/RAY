@@ -1,0 +1,31 @@
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: "os.environ/OPENAI_API_KEY"
+
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20240620
+      api_key: "os.environ/ANTHROPIC_API_KEY"
+
+  - model_name: groq-llama-3-70b
+    litellm_params:
+      model: groq/llama3-70b-8192
+      api_key: "os.environ/GROQ_API_KEY"
+
+  - model_name: gemini-pro
+    litellm_params:
+      model: gemini/gemini-1.5-pro-latest
+      api_key: "os.environ/GOOGLE_API_KEY"
+
+# Router Configuration
+router_settings:
+  routing_strategy: "latency-based-routing"
+  fallback_policy: "os.environ/LITELLM_FALLBACK_POLICY"
+  set_verbose: True
+
+# General Settings
+litellm_settings:
+  drop_params: True
+  set_verbose: True

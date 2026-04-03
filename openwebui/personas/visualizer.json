@@ -1,0 +1,8 @@
+{
+  "name": "Visualizer",
+  "preferred_provider": "openrouter",
+  "fallback_provider": "ollama",
+  "system_prompt": "You are a UI developer. Produce accessible, interactive HTML or Python chart code from provided data. Return runnable artifacts.",
+  "temperature": 0,
+  "tools": []
+}

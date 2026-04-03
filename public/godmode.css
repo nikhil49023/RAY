@@ -1,0 +1,242 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --ray-bg: #f4f5f7;
+  --ray-surface: rgba(255, 255, 255, 0.78);
+  --ray-surface-strong: #ffffff;
+  --ray-text: #102018;
+  --ray-muted: #52635b;
+  --ray-accent: #0f766e;
+  --ray-accent-soft: #ccfbf1;
+  --ray-warn: #b42318;
+  --ray-border: rgba(16, 32, 24, 0.12);
+  --ray-shadow: 0 10px 35px rgba(13, 39, 31, 0.12);
+  --ray-radius: 16px;
+}
+
+html,
+body,
+#root {
+  font-family: 'Sora', 'Segoe UI', sans-serif !important;
+  background: radial-gradient(circle at 12% 8%, #d1fae5 0%, rgba(209, 250, 229, 0) 34%),
+    radial-gradient(circle at 88% 16%, #cffafe 0%, rgba(207, 250, 254, 0) 32%),
+    linear-gradient(145deg, #f7faf9 0%, #eff4f1 55%, #ecf4f2 100%) !important;
+  color: var(--ray-text) !important;
+}
+
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  inset: auto;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::before {
+  width: 38vw;
+  height: 38vw;
+  min-width: 240px;
+  min-height: 240px;
+  right: -10vw;
+  top: -12vw;
+  background: radial-gradient(circle, rgba(15, 118, 110, 0.14), rgba(15, 118, 110, 0));
+  filter: blur(6px);
+}
+
+body::after {
+  width: 28vw;
+  height: 28vw;
+  min-width: 180px;
+  min-height: 180px;
+  left: -8vw;
+  bottom: -10vw;
+  background: radial-gradient(circle, rgba(180, 83, 9, 0.12), rgba(180, 83, 9, 0));
+}
+
+main,
+.MuiContainer-root,
+.MuiBox-root {
+  position: relative;
+  z-index: 1;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Sora', sans-serif !important;
+  letter-spacing: -0.02em;
+  color: #0b1f17 !important;
+}
+
+p,
+li,
+span,
+div,
+label,
+input,
+textarea,
+button {
+  font-family: 'Sora', 'Segoe UI', sans-serif !important;
+}
+
+code,
+pre,
+[class*='monaco'],
+.mantine-Code-root {
+  font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace !important;
+}
+
+.MuiAppBar-root {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), rgba(240, 255, 251, 0.85)) !important;
+  color: var(--ray-text) !important;
+  border-bottom: 1px solid var(--ray-border) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06) !important;
+  backdrop-filter: blur(12px);
+}
+
+.MuiDrawer-paper,
+[data-testid*='sidebar'],
+[data-testid='chat-settings'] {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 252, 250, 0.84)) !important;
+  border-right: 1px solid var(--ray-border) !important;
+  backdrop-filter: blur(14px);
+}
+
+.MuiPaper-root,
+.MuiCard-root,
+.MuiAccordion-root,
+[data-testid*='message'] {
+  background: var(--ray-surface) !important;
+  border: 1px solid var(--ray-border) !important;
+  border-radius: var(--ray-radius) !important;
+  box-shadow: var(--ray-shadow) !important;
+}
+
+[data-testid*='message'] {
+  animation: rayIn 320ms ease both;
+}
+
+@keyframes rayIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+button,
+.MuiButton-root {
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+  text-transform: none !important;
+  letter-spacing: 0.01em !important;
+}
+
+.MuiButton-containedPrimary,
+.MuiButton-contained {
+  background: linear-gradient(135deg, #0f766e, #0f9d8e) !important;
+  box-shadow: 0 8px 22px rgba(15, 118, 110, 0.24) !important;
+}
+
+.MuiButton-outlined,
+.MuiButton-text {
+  border-color: rgba(15, 118, 110, 0.35) !important;
+  color: #0b5f58 !important;
+}
+
+.MuiInputBase-root,
+.MuiTextField-root,
+textarea,
+input,
+select {
+  border-radius: 12px !important;
+}
+
+.MuiOutlinedInput-root fieldset {
+  border-color: rgba(15, 118, 110, 0.3) !important;
+}
+
+.MuiOutlinedInput-root:hover fieldset,
+.MuiOutlinedInput-root.Mui-focused fieldset {
+  border-color: #0f766e !important;
+}
+
+[data-testid='message-composer'],
+textarea {
+  background: rgba(255, 255, 255, 0.92) !important;
+}
+
+a {
+  color: #0b6d65 !important;
+}
+
+a:hover {
+  color: #094d49 !important;
+}
+
+hr,
+.MuiDivider-root {
+  border-color: rgba(16, 32, 24, 0.14) !important;
+}
+
+table {
+  border-collapse: collapse;
+  border-radius: 12px;
+  overflow: hidden;
+  width: 100%;
+  background: #fbfffd;
+}
+
+th,
+td {
+  border: 1px solid rgba(16, 32, 24, 0.09);
+  padding: 10px 12px;
+}
+
+th {
+  background: #ebfaf6;
+  color: #0c3e37;
+}
+
+.js-plotly-plot,
+.plotly,
+[data-testid*='runtime_scoreboard'] {
+  border-radius: 14px !important;
+  overflow: hidden;
+}
+
+[data-testid*='avatar'],
+img[alt*='avatar'] {
+  border-radius: 10px !important;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --ray-radius: 12px;
+  }
+
+  .MuiDrawer-paper,
+  [data-testid*='sidebar'] {
+    backdrop-filter: none;
+  }
+
+  .MuiPaper-root,
+  .MuiCard-root,
+  .MuiAccordion-root,
+  [data-testid*='message'] {
+    box-shadow: 0 6px 20px rgba(9, 24, 18, 0.08) !important;
+  }
+
+  body::before,
+  body::after {
+    display: none;
+  }
+}

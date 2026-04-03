@@ -1,0 +1,49 @@
+# LangGraph Execution Configuration
+
+graph:
+  checkpoint_path: "data/checkpoints/graph.db"
+  max_retries: 3
+  retry_backoff: 2.0
+  
+  # Checkpoint modes by intent
+  checkpoint_modes:
+    research: "sync"      # Durable execution for long-running research
+    artifact: "sync"      # Durable execution for artifact generation
+    coding: "async"       # Fast execution for coding tasks
+    dashboard: "async"    # Fast execution for dashboards
+    chat: "async"         # Fast execution for chat
+
+verification:
+  # Evidence requirements by intent
+  min_evidence:
+    research: 2
+    artifact: 1
+    coding: 0
+    dashboard: 0
+    chat: 0
+  
+  # Confidence thresholds
+  min_confidence: 0.5
+  
+  # Retry on verification failure
+  max_verification_retries: 2
+
+memory:
+  # Promotion rules
+  min_rule_length: 15
+  max_rule_length: 400
+  
+  # Retrieval
+  behavioral_top_k: 4
+  docs_top_k: 3
+  execution_top_k: 2
+
+models:
+  # Primary model
+  primary: "premium-thinker"
+  
+  # Fallback chain
+  fallbacks:
+    - "llama-3.3-70b-versatile"
+    - "openrouter/free"
+    - "deepseek-r1:8b"
