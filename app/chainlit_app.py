@@ -184,11 +184,11 @@ def _scoreboard(
     ]
     style = dashboard_style.strip().lower()
     if style == "executive":
-        ready_color, blocked_color, bg_color = "#2563eb", "#be123c", "#f8fafc"
+        ready_color, blocked_color, bg_color = "#00BFA6", "#C62828", "#0A0620"
     elif style == "diagnostic":
-        ready_color, blocked_color, bg_color = "#16a34a", "#b91c1c", "#f3f4f6"
+        ready_color, blocked_color, bg_color = "#64FFDA", "#FF6B35", "#0E0830"
     else:
-        ready_color, blocked_color, bg_color = "#0f766e", "#b91c1c", "#ffffff"
+        ready_color, blocked_color, bg_color = "#00BFA6", "#C62828", "#080418"
 
     colors = [ready_color if val else blocked_color for val in values]
 
@@ -226,13 +226,17 @@ def _scoreboard(
         col=1,
     )
     figure.update_layout(
-        title=(
-            f"God Mode Runtime | VRAM Budget: {settings.hardware_vram_budget_gb}GB | "
-            f"Quantization: {settings.hardware_quantization_profile}"
+        title=dict(
+            text=(
+                f"RAY Runtime Scoreboard | VRAM: {settings.hardware_vram_budget_gb}GB | "
+                f"{settings.hardware_quantization_profile}"
+            ),
+            font=dict(color="#F0F4F8", size=14),
         ),
         yaxis2=dict(range=[0, 1.2], tickvals=[0, 1], ticktext=["blocked", "ready"]),
         paper_bgcolor=bg_color,
         plot_bgcolor=bg_color,
+        font=dict(color="#C9D1D9"),
         height=520,
         margin=dict(l=20, r=20, t=50, b=30),
     )
@@ -409,12 +413,12 @@ async def on_chat_start() -> None:
 
     await cl.Message(
         content=(
-            "## RAY Control Surface\n"
-            "Autonomous orchestration is active with inline dashboards and behavioral memory.\n\n"
-            f"- Hardware Profile: `{settings.hardware_vram_budget_gb}GB` VRAM budget, `{settings.hardware_quantization_profile}`\n"
-            f"- Behavioral Memory: `{'ready' if memory_status.ready else 'fallback'}` via `{memory_status.backend}`\n"
-            f"- Theme: `{theme}`\n\n"
-            "Open chat settings in the sidebar to tune model routing, memory injection depth, and dashboard style."
+            "## ⚡ RAY God Mode — Active\n"
+            "Autonomous research orchestration with inline scorecards, behavioral memory, and Firecrawl integration.\n\n"
+            f"- **Hardware**: `{settings.hardware_vram_budget_gb}GB` VRAM · `{settings.hardware_quantization_profile}`\n"
+            f"- **Memory**: `{'ready' if memory_status.ready else 'fallback'}` via `{memory_status.backend}`\n"
+            f"- **Theme**: `{theme}`\n\n"
+            "Open chat settings to tune model routing, memory depth, Firecrawl endpoint, and dashboard style."
             + memory_hint
         )
     ).send()

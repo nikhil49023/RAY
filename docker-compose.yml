@@ -43,4 +43,52 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
 
-volumes: {}
+  # ── Firecrawl Self-Host Stack ──────────────────────────────────
+  # Local web crawling — no API key required when USE_DB_AUTHENTICATION=false
+  firecrawl-api:
+    image: ghcr.io/mendableai/firecrawl:latest
+    container_name: firecrawl-api
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - HOST=0.0.0.0
+      - USE_DB_AUTHENTICATION=false
+      - REDIS_URL=redis://firecrawl-redis:6379
+      - REDIS_RATE_LIMIT_URL=redis://firecrawl-redis:6379
+      - PLAYWRIGHT_MICROSERVICE_URL=http://firecrawl-playwright:3000
+      - NUM_WORKERS_PER_QUEUE=2
+      - LOGGING_LEVEL=info
+    depends_on:
+      firecrawl-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  firecrawl-redis:
+    image: redis:7-alpine
+    container_name: firecrawl-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - firecrawl-redis-data:/data
+
+  firecrawl-playwright:
+    image: ghcr.io/mendableai/firecrawl-playwright:latest
+    container_name: firecrawl-playwright
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+
+volumes:
+  firecrawl-redis-data:

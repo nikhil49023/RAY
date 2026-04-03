@@ -1,57 +1,77 @@
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+/* ═══════════════════════════════════════════════════════════════════
+   RAY — Chainlit God Mode Custom CSS
+   Indian-Authentic Premium Design System
+   ═══════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 :root {
-  --ray-bg: #f4f5f7;
-  --ray-surface: rgba(255, 255, 255, 0.78);
-  --ray-surface-strong: #ffffff;
-  --ray-text: #102018;
-  --ray-muted: #52635b;
-  --ray-accent: #0f766e;
-  --ray-accent-soft: #ccfbf1;
-  --ray-warn: #b42318;
-  --ray-border: rgba(16, 32, 24, 0.12);
-  --ray-shadow: 0 10px 35px rgba(13, 39, 31, 0.12);
-  --ray-radius: 16px;
+  --ray-bg: #080418;
+  --ray-surface: rgba(14, 8, 38, 0.82);
+  --ray-surface-strong: #120A2E;
+  --ray-text: #F0F4F8;
+  --ray-muted: #8B949E;
+  --ray-accent: #00BFA6;
+  --ray-accent-light: #64FFDA;
+  --ray-accent-soft: rgba(0, 191, 166, 0.1);
+  --ray-saffron: #FF6B35;
+  --ray-saffron-soft: rgba(255, 107, 53, 0.12);
+  --ray-gold: #FFD700;
+  --ray-gold-soft: rgba(255, 215, 0, 0.1);
+  --ray-warn: #C62828;
+  --ray-border: rgba(100, 255, 218, 0.1);
+  --ray-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  --ray-radius: 18px;
 }
 
 html,
 body,
 #root {
-  font-family: 'Sora', 'Segoe UI', sans-serif !important;
-  background: radial-gradient(circle at 12% 8%, #d1fae5 0%, rgba(209, 250, 229, 0) 34%),
-    radial-gradient(circle at 88% 16%, #cffafe 0%, rgba(207, 250, 254, 0) 32%),
-    linear-gradient(145deg, #f7faf9 0%, #eff4f1 55%, #ecf4f2 100%) !important;
+  font-family: 'Outfit', 'Inter', 'Segoe UI', sans-serif !important;
+  background:
+    radial-gradient(ellipse at 15% 10%, rgba(0, 191, 166, 0.06) 0%, transparent 40%),
+    radial-gradient(ellipse at 85% 15%, rgba(255, 107, 53, 0.04) 0%, transparent 35%),
+    linear-gradient(180deg, #080418 0%, #0A0620 50%, #080418 100%) !important;
   color: var(--ray-text) !important;
 }
 
-body::before,
+body::before {
+  content: '';
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 700px;
+  height: 700px;
+  transform: translate(-50%, -50%);
+  opacity: 0.015;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    repeating-conic-gradient(
+      from 0deg at 50% 50%,
+      transparent 0deg 10deg,
+      rgba(255, 215, 0, 0.3) 10deg 11deg,
+      transparent 11deg 30deg
+    );
+  border-radius: 50%;
+  animation: mandala-rotate 120s linear infinite;
+}
+
+@keyframes mandala-rotate {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
 body::after {
   content: '';
   position: fixed;
-  inset: auto;
+  width: 300px;
+  height: 300px;
+  left: -100px;
+  bottom: -100px;
+  background: radial-gradient(circle, rgba(255, 107, 53, 0.1), transparent);
+  filter: blur(60px);
   pointer-events: none;
   z-index: 0;
-}
-
-body::before {
-  width: 38vw;
-  height: 38vw;
-  min-width: 240px;
-  min-height: 240px;
-  right: -10vw;
-  top: -12vw;
-  background: radial-gradient(circle, rgba(15, 118, 110, 0.14), rgba(15, 118, 110, 0));
-  filter: blur(6px);
-}
-
-body::after {
-  width: 28vw;
-  height: 28vw;
-  min-width: 180px;
-  min-height: 180px;
-  left: -8vw;
-  bottom: -10vw;
-  background: radial-gradient(circle, rgba(180, 83, 9, 0.12), rgba(180, 83, 9, 0));
 }
 
 main,
@@ -61,50 +81,41 @@ main,
   z-index: 1;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: 'Sora', sans-serif !important;
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', sans-serif !important;
   letter-spacing: -0.02em;
-  color: #0b1f17 !important;
+  color: var(--ray-text) !important;
 }
 
-p,
-li,
-span,
-div,
-label,
-input,
-textarea,
-button {
-  font-family: 'Sora', 'Segoe UI', sans-serif !important;
+p, li, span, div, label, input, textarea, button {
+  font-family: 'Inter', 'Outfit', 'Segoe UI', sans-serif !important;
 }
 
-code,
-pre,
-[class*='monaco'],
-.mantine-Code-root {
+code, pre, [class*='monaco'], .mantine-Code-root {
   font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace !important;
 }
 
+/* ── App Bar ──────────────────────────────────────────────────── */
+
 .MuiAppBar-root {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), rgba(240, 255, 251, 0.85)) !important;
+  background: rgba(14, 8, 38, 0.86) !important;
   color: var(--ray-text) !important;
   border-bottom: 1px solid var(--ray-border) !important;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06) !important;
-  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
+  backdrop-filter: blur(20px);
 }
+
+/* ── Sidebar / Drawer ─────────────────────────────────────────── */
 
 .MuiDrawer-paper,
 [data-testid*='sidebar'],
 [data-testid='chat-settings'] {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 252, 250, 0.84)) !important;
+  background: rgba(10, 6, 32, 0.92) !important;
   border-right: 1px solid var(--ray-border) !important;
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(20px);
 }
+
+/* ── Cards / Messages ─────────────────────────────────────────── */
 
 .MuiPaper-root,
 .MuiCard-root,
@@ -117,110 +128,158 @@ pre,
 }
 
 [data-testid*='message'] {
-  animation: rayIn 320ms ease both;
+  animation: rayIn 360ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 @keyframes rayIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
+/* ── Buttons ──────────────────────────────────────────────────── */
+
 button,
 .MuiButton-root {
-  border-radius: 12px !important;
+  border-radius: 14px !important;
   font-weight: 700 !important;
   text-transform: none !important;
   letter-spacing: 0.01em !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 .MuiButton-containedPrimary,
 .MuiButton-contained {
-  background: linear-gradient(135deg, #0f766e, #0f9d8e) !important;
-  box-shadow: 0 8px 22px rgba(15, 118, 110, 0.24) !important;
+  background: linear-gradient(135deg, #00BFA6, #64FFDA) !important;
+  color: #080418 !important;
+  box-shadow: 0 8px 24px rgba(0, 191, 166, 0.22) !important;
+}
+
+.MuiButton-containedPrimary:hover,
+.MuiButton-contained:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 12px 32px rgba(0, 191, 166, 0.3) !important;
 }
 
 .MuiButton-outlined,
 .MuiButton-text {
-  border-color: rgba(15, 118, 110, 0.35) !important;
-  color: #0b5f58 !important;
+  border-color: rgba(0, 191, 166, 0.25) !important;
+  color: var(--ray-accent-light) !important;
 }
+
+/* ── Inputs ───────────────────────────────────────────────────── */
 
 .MuiInputBase-root,
 .MuiTextField-root,
 textarea,
 input,
 select {
-  border-radius: 12px !important;
+  border-radius: 14px !important;
 }
 
 .MuiOutlinedInput-root fieldset {
-  border-color: rgba(15, 118, 110, 0.3) !important;
+  border-color: rgba(0, 191, 166, 0.2) !important;
 }
 
 .MuiOutlinedInput-root:hover fieldset,
 .MuiOutlinedInput-root.Mui-focused fieldset {
-  border-color: #0f766e !important;
+  border-color: #00BFA6 !important;
 }
 
 [data-testid='message-composer'],
 textarea {
-  background: rgba(255, 255, 255, 0.92) !important;
+  background: rgba(14, 8, 38, 0.85) !important;
 }
 
+/* ── Links ────────────────────────────────────────────────────── */
+
 a {
-  color: #0b6d65 !important;
+  color: var(--ray-accent-light) !important;
 }
 
 a:hover {
-  color: #094d49 !important;
+  color: #00E5CC !important;
 }
+
+/* ── Dividers ─────────────────────────────────────────────────── */
 
 hr,
 .MuiDivider-root {
-  border-color: rgba(16, 32, 24, 0.14) !important;
+  border-color: rgba(100, 255, 218, 0.08) !important;
 }
+
+/* ── Tables ───────────────────────────────────────────────────── */
 
 table {
   border-collapse: collapse;
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
   width: 100%;
-  background: #fbfffd;
+  background: rgba(14, 8, 38, 0.5);
 }
 
-th,
-td {
-  border: 1px solid rgba(16, 32, 24, 0.09);
-  padding: 10px 12px;
+th, td {
+  border: 1px solid rgba(100, 255, 218, 0.06);
+  padding: 12px 14px;
 }
 
 th {
-  background: #ebfaf6;
-  color: #0c3e37;
+  background: linear-gradient(135deg, rgba(26, 10, 62, 0.9), rgba(0, 191, 166, 0.05));
+  color: var(--ray-accent-light);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
+
+/* ── Plotly Charts ────────────────────────────────────────────── */
 
 .js-plotly-plot,
 .plotly,
 [data-testid*='runtime_scoreboard'] {
-  border-radius: 14px !important;
+  border-radius: 16px !important;
   overflow: hidden;
+  box-shadow: var(--ray-shadow) !important;
 }
+
+/* ── Avatars ──────────────────────────────────────────────────── */
 
 [data-testid*='avatar'],
 img[alt*='avatar'] {
-  border-radius: 10px !important;
+  border-radius: 12px !important;
+  border: 2px solid rgba(0, 191, 166, 0.16) !important;
 }
+
+/* ── Scrollbars ───────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(100, 255, 218, 0.14);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 255, 218, 0.24);
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
 
 @media (max-width: 900px) {
   :root {
-    --ray-radius: 12px;
+    --ray-radius: 14px;
   }
 
   .MuiDrawer-paper,
@@ -232,7 +291,7 @@ img[alt*='avatar'] {
   .MuiCard-root,
   .MuiAccordion-root,
   [data-testid*='message'] {
-    box-shadow: 0 6px 20px rgba(9, 24, 18, 0.08) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3) !important;
   }
 
   body::before,

@@ -5,8 +5,12 @@ import remarkGfm from 'remark-gfm'
 import {
   Activity, Brain, ChartColumn, Compass, FileText, FlaskConical, MessageSquare,
   PanelLeft, PanelLeftClose, Plus, Search, Send, Settings, Sparkles, Square,
-  Workflow, X, Zap,
+  Workflow, X, Zap, TrendingUp, BarChart3, Shield, Globe2,
 } from 'lucide-react'
+
+/* ═══════════════════════════════════════════════════════════════════
+   TYPE DEFINITIONS
+   ═══════════════════════════════════════════════════════════════════ */
 
 interface ModelEntry { id: string; label: string }
 interface ThreadItem { id: string; title: string; updated_at: string; message_count: number }
@@ -67,6 +71,10 @@ type RenderSegment =
   | { type: 'chart'; raw: string; chart?: ChartSpec }
   | { type: 'mermaid'; content: string }
 
+/* ═══════════════════════════════════════════════════════════════════
+   API LAYER
+   ═══════════════════════════════════════════════════════════════════ */
+
 const api = {
   models: () => fetch('/api/models').then(r => r.json()),
   threads: () => fetch('/api/threads').then(r => r.json()),
@@ -104,7 +112,21 @@ const DEFAULT_UI: UiSettings = {
   researchOutput: 'document',
 }
 
-const CHART_COLORS = ['#2dd4bf', '#f97316', '#38bdf8', '#facc15', '#fb7185']
+/* ── Indian-Authentic Vibrant Chart Palette ────────────────────── */
+const CHART_COLORS = [
+  '#00BFA6', // chakra teal
+  '#FF6B35', // saffron
+  '#FFD700', // gold
+  '#E91E63', // lotus pink
+  '#38BDF8', // sky blue
+  '#A78BFA', // lavender
+  '#F97316', // deep orange
+  '#2DD4BF', // mint
+]
+
+/* ═══════════════════════════════════════════════════════════════════
+   MARKDOWN RENDERER
+   ═══════════════════════════════════════════════════════════════════ */
 
 function Md({ children }: { children: string }) {
   return (
@@ -124,6 +146,83 @@ function Md({ children }: { children: string }) {
     </ReactMarkdown>
   )
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   SCORECARD & GAUGE COMPONENTS
+   ═══════════════════════════════════════════════════════════════════ */
+
+function ScoreCard({ value, label, color = 'teal' }: { value: string | number; label: string; color?: string }) {
+  return (
+    <div className="scorecard">
+      <div className={`scorecard-value ${color}`}>{value}</div>
+      <div className="scorecard-label">{label}</div>
+    </div>
+  )
+}
+
+function GaugeDonut({ value, max, label }: { value: number; max: number; label: string }) {
+  const radius = 44
+  const circumference = 2 * Math.PI * radius
+  const ratio = Math.min(value / Math.max(max, 1), 1)
+  const offset = circumference - ratio * circumference
+  const healthClass = ratio >= 0.7 ? 'health-good' : ratio >= 0.4 ? 'health-warn' : 'health-bad'
+
+  return (
+    <div className="gauge-donut">
+      <svg viewBox="0 0 120 120">
+        <defs>
+          <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#00BFA6" />
+            <stop offset="50%" stopColor="#64FFDA" />
+            <stop offset="100%" stopColor="#FFD700" />
+          </linearGradient>
+        </defs>
+        <circle cx="60" cy="60" r={radius} className="gauge-bg" />
+        <circle
+          cx="60"
+          cy="60"
+          r={radius}
+          className={`gauge-fill ${healthClass}`}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          stroke="url(#gaugeGrad)"
+        />
+      </svg>
+      <div className="gauge-label">{value}/{max}</div>
+    </div>
+  )
+}
+
+function RuntimeScoreStrip({
+  evidence,
+  thinkingLog,
+  mode,
+  model,
+}: {
+  evidence: EvidenceItem[]
+  thinkingLog: ThinkingLogItem[]
+  mode: string
+  model: string
+}) {
+  const sourceCount = evidence.length
+  const avgScore = evidence.length > 0
+    ? (evidence.reduce((sum, e) => sum + (e.relu_score || 0), 0) / evidence.length).toFixed(2)
+    : '—'
+  const providers = [...new Set(evidence.map(e => e.provider).filter(Boolean))].length
+
+  return (
+    <div className="scorecard-strip">
+      <ScoreCard value={sourceCount} label="Sources" color="teal" />
+      <ScoreCard value={avgScore} label="Avg ReLU Score" color="gold" />
+      <ScoreCard value={thinkingLog.length} label="Thinking Steps" color="saffron" />
+      <ScoreCard value={providers || '—'} label="Providers" color="pink" />
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CHART & CONTENT PARSING
+   ═══════════════════════════════════════════════════════════════════ */
 
 function normalizeChart(input: ChartSpec | undefined): ChartSpec | null {
   if (!input || typeof input !== 'object') return null
@@ -194,11 +293,15 @@ function parseStructuredContent(content: string): RenderSegment[] {
   return segments.length > 0 ? segments : [{ type: 'markdown', content }]
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   MERMAID CARD
+   ═══════════════════════════════════════════════════════════════════ */
+
 function MermaidCard({ content }: { content: string }) {
   const labels = Array.from(content.matchAll(/\[(.*?)\]|\((.*?)\)|\{(.*?)\}/g))
     .map(match => match[1] || match[2] || match[3] || '')
     .filter(Boolean)
-    .slice(0, 6)
+    .slice(0, 8)
 
   return (
     <div className="structured-card mermaid-card">
@@ -220,6 +323,10 @@ function MermaidCard({ content }: { content: string }) {
   )
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   CHART CARD — Vibrant Colorful SVG Rendering
+   ═══════════════════════════════════════════════════════════════════ */
+
 function ChartCard({ chart, raw }: { chart?: ChartSpec; raw: string }) {
   const normalized = normalizeChart(chart)
   if (!normalized) {
@@ -237,9 +344,9 @@ function ChartCard({ chart, raw }: { chart?: ChartSpec; raw: string }) {
   const series = normalized.series || []
   const values = series.flatMap(item => item.data)
   const maxValue = Math.max(...values, 1)
-  const width = 640
-  const height = 280
-  const padding = { top: 24, right: 16, bottom: 46, left: 44 }
+  const width = 680
+  const height = 300
+  const padding = { top: 28, right: 20, bottom: 52, left: 50 }
   const chartWidth = width - padding.left - padding.right
   const chartHeight = height - padding.top - padding.bottom
 
@@ -255,7 +362,7 @@ function ChartCard({ chart, raw }: { chart?: ChartSpec; raw: string }) {
   return (
     <div className="structured-card chart-card">
       <div className="structured-card-header">
-        <span className="structured-pill"><ChartColumn size={13} /> Visual Render</span>
+        <span className="structured-pill"><BarChart3 size={13} /> Visual Render</span>
         <h4>{normalized.title}</h4>
       </div>
       <div className="chart-legend">
@@ -270,44 +377,64 @@ function ChartCard({ chart, raw }: { chart?: ChartSpec; raw: string }) {
         ))}
       </div>
       <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={normalized.title}>
+        <defs>
+          {series.map((item, idx) => {
+            const color = item.color || CHART_COLORS[idx % CHART_COLORS.length]
+            return (
+              <linearGradient key={`grad-${idx}`} id={`chartGrad${idx}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity="1" />
+                <stop offset="100%" stopColor={color} stopOpacity="0.6" />
+              </linearGradient>
+            )
+          })}
+        </defs>
+
         {[0, 0.25, 0.5, 0.75, 1].map(step => {
           const y = padding.top + chartHeight - (chartHeight * step)
           const value = Math.round(maxValue * step)
           return (
             <g key={step}>
               <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} className="chart-grid-line" />
-              <text x={padding.left - 10} y={y + 4} className="chart-axis-text">{value}</text>
+              <text x={padding.left - 12} y={y + 4} className="chart-axis-text" textAnchor="end">{value}</text>
             </g>
           )
         })}
 
         {normalized.type === 'line'
-          ? series.map((item, index) => (
-            <g key={item.label}>
-              <polyline
-                fill="none"
-                stroke={item.color || CHART_COLORS[index % CHART_COLORS.length]}
-                strokeWidth="3"
-                points={linePoints(item.data)}
-              />
-              {item.data.map((value, valueIndex) => {
-                const x = padding.left + ((valueIndex / Math.max(labels.length - 1, 1)) * chartWidth)
-                const y = padding.top + chartHeight - ((value / maxValue) * chartHeight)
-                return (
-                  <circle
-                    key={`${item.label}-${valueIndex}`}
-                    cx={x}
-                    cy={y}
-                    r="4"
-                    fill={item.color || CHART_COLORS[index % CHART_COLORS.length]}
-                  />
-                )
-              })}
-            </g>
-          ))
+          ? series.map((item, index) => {
+            const color = item.color || CHART_COLORS[index % CHART_COLORS.length]
+            return (
+              <g key={item.label}>
+                <polyline
+                  fill="none"
+                  stroke={color}
+                  strokeWidth="3"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  points={linePoints(item.data)}
+                  style={{ filter: `drop-shadow(0 2px 4px ${color}40)` }}
+                />
+                {item.data.map((value, valueIndex) => {
+                  const x = padding.left + ((valueIndex / Math.max(labels.length - 1, 1)) * chartWidth)
+                  const y = padding.top + chartHeight - ((value / maxValue) * chartHeight)
+                  return (
+                    <circle
+                      key={`${item.label}-${valueIndex}`}
+                      cx={x}
+                      cy={y}
+                      r="5"
+                      fill={color}
+                      stroke="#080418"
+                      strokeWidth="2"
+                    />
+                  )
+                })}
+              </g>
+            )
+          })
           : labels.map((label, labelIndex) => {
             const groupWidth = chartWidth / Math.max(labels.length, 1)
-            const innerWidth = groupWidth * 0.78
+            const innerWidth = groupWidth * 0.8
             const barWidth = innerWidth / Math.max(series.length, 1)
             return (
               <g key={label}>
@@ -321,11 +448,29 @@ function ChartCard({ chart, raw }: { chart?: ChartSpec; raw: string }) {
                       key={`${label}-${item.label}`}
                       x={x}
                       y={y}
-                      width={Math.max(barWidth - 6, 10)}
+                      width={Math.max(barWidth - 4, 12)}
                       height={barHeight}
-                      rx="8"
-                      fill={item.color || CHART_COLORS[seriesIndex % CHART_COLORS.length]}
-                    />
+                      rx="6"
+                      fill={`url(#chartGrad${seriesIndex})`}
+                      style={{ filter: `drop-shadow(0 4px 8px ${item.color || CHART_COLORS[seriesIndex % CHART_COLORS.length]}30)` }}
+                    >
+                      <animate
+                        attributeName="height"
+                        from="0"
+                        to={barHeight}
+                        dur="0.6s"
+                        fill="freeze"
+                        begin="0s"
+                      />
+                      <animate
+                        attributeName="y"
+                        from={padding.top + chartHeight}
+                        to={y}
+                        dur="0.6s"
+                        fill="freeze"
+                        begin="0s"
+                      />
+                    </rect>
                   )
                 })}
               </g>
@@ -335,8 +480,8 @@ function ChartCard({ chart, raw }: { chart?: ChartSpec; raw: string }) {
         {labels.map((label, index) => {
           const x = padding.left + ((index + 0.5) * (chartWidth / Math.max(labels.length, 1)))
           return (
-            <text key={label} x={x} y={height - 16} textAnchor="middle" className="chart-axis-text chart-axis-label">
-              {label}
+            <text key={label} x={x} y={height - 14} textAnchor="middle" className="chart-axis-text chart-axis-label">
+              {label.length > 12 ? label.slice(0, 12) + '…' : label}
             </text>
           )
         })}
@@ -344,6 +489,10 @@ function ChartCard({ chart, raw }: { chart?: ChartSpec; raw: string }) {
     </div>
   )
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   STRUCTURED CONTENT RENDERER
+   ═══════════════════════════════════════════════════════════════════ */
 
 function StructuredContent({ content }: { content: string }) {
   const segments = parseStructuredContent(content)
@@ -378,6 +527,10 @@ function StructuredContent({ content }: { content: string }) {
   )
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   EVIDENCE RAIL — Colorful Source Cards
+   ═══════════════════════════════════════════════════════════════════ */
+
 function EvidenceRail({ evidence }: { evidence: EvidenceItem[] }) {
   return (
     <div className="evidence-rail">
@@ -389,9 +542,15 @@ function EvidenceRail({ evidence }: { evidence: EvidenceItem[] }) {
         {evidence.map((item, index) => (
           <div key={`${item.url}-${index}`} className="evidence-card">
             <div className="evidence-card-top">
-              <span className="source-chip">{item.source}</span>
+              <span className="source-chip">
+                <Globe2 size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                {item.source}
+              </span>
               {typeof item.relu_score === 'number' && (
-                <span className="source-score">ReLU {item.relu_score.toFixed(2)}</span>
+                <span className="source-score">
+                  <TrendingUp size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                  {item.relu_score.toFixed(2)}
+                </span>
               )}
             </div>
             <div className="evidence-title">{item.title || item.claim.slice(0, 80)}</div>
@@ -408,6 +567,10 @@ function EvidenceRail({ evidence }: { evidence: EvidenceItem[] }) {
   )
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   THINKING PANEL
+   ═══════════════════════════════════════════════════════════════════ */
+
 function ThinkingPanel({
   logs,
   plan,
@@ -423,14 +586,14 @@ function ThinkingPanel({
     <details className="thinking-panel" open={live || logs.length <= 3}>
       <summary>
         <div className="thinking-summary">
-          <span className="structured-pill"><Activity size={13} /> Thinking Log</span>
-          <span>{logs.length} orchestration events</span>
-          <span className="thinking-level">{researchLevel} research</span>
+          <span className="structured-pill"><Activity size={13} /> Orchestration Log</span>
+          <span>{logs.length} events</span>
+          <span className="thinking-level">{researchLevel} depth</span>
         </div>
       </summary>
       {plan.trim() && (
         <div className="thinking-plan">
-          <div className="thinking-plan-title">Plan snapshot</div>
+          <div className="thinking-plan-title">Research Plan</div>
           <Md>{plan}</Md>
         </div>
       )}
@@ -454,6 +617,10 @@ function ThinkingPanel({
     </details>
   )
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MAIN APPLICATION
+   ═══════════════════════════════════════════════════════════════════ */
 
 export default function App() {
   const [models, setModels] = useState<ModelEntry[]>([])
@@ -653,12 +820,13 @@ export default function App() {
       <div className="ambient ambient-b" />
 
       <div className="app">
+        {/* ── SIDEBAR ─────────────────────────────────────────────── */}
         <aside className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
           <div className="sidebar-header">
             <div className="logo-orb">R</div>
             <div>
               <h2>RAY Research</h2>
-              <p>Glass-box AI workstation</p>
+              <p>Autonomous AI Workstation</p>
             </div>
           </div>
 
@@ -716,6 +884,7 @@ export default function App() {
           </div>
         </aside>
 
+        {/* ── MAIN CONTENT AREA ───────────────────────────────────── */}
         <div className="main">
           <div className="topbar">
             <button className="toggle-sidebar-btn" onClick={() => setSidebarOpen(open => !open)}>
@@ -732,9 +901,9 @@ export default function App() {
               <option value="reasoning">🧠 Reasoning</option>
             </select>
             <div className="topbar-pills">
-              <span className="signal-pill"><Search size={13} /> DuckDuckGo</span>
-              <span className="signal-pill"><Sparkles size={13} /> ReLU</span>
-              <span className="signal-pill"><Compass size={13} /> Firecrawl</span>
+              <span className="signal-pill"><Search size={12} /> DuckDuckGo</span>
+              <span className="signal-pill"><Sparkles size={12} /> ReLU</span>
+              <span className="signal-pill"><Compass size={12} /> Firecrawl</span>
             </div>
             <div className="topbar-spacer" />
             <button className="settings-btn" onClick={() => setSettingsOpen(true)}>
@@ -742,25 +911,29 @@ export default function App() {
             </button>
           </div>
 
+          {/* ── Messages Stream ───────────────────────────────────── */}
           <div className="messages">
             <div className="messages-inner">
               {messages.length === 0 && !isLoading && (
                 <div className="welcome">
-                  <div className="welcome-badge">Research-first • Visual • Structured</div>
+                  <div className="welcome-badge">Research-first · Visual · Structured · Made in India 🇮🇳</div>
                   <h1>RAY God Mode</h1>
-                  <p>Self-hosted-first Firecrawl, DuckDuckGo for fast search, ReLU reranking for tighter evidence, and visual rendering directly inside chat.</p>
+                  <p>
+                    Self-hosted Firecrawl for deep crawling, DuckDuckGo for fast search,
+                    ReLU reranking for precision evidence, and vibrant visual rendering — all inside chat.
+                  </p>
                   <div className="welcome-cards">
                     <div className="welcome-card" onClick={() => quickPrompt('Compare top reasoning models and include a leaderboard chart')}>
-                      <div className="wc-title"><ChartColumn size={13} /> Visual Research</div>
-                      <div className="wc-desc">Leaderboard with chart rendering</div>
+                      <div className="wc-title"><BarChart3 size={14} /> Visual Research</div>
+                      <div className="wc-desc">Leaderboard with live chart rendering</div>
                     </div>
-                    <div className="welcome-card" onClick={() => quickPrompt('Research self-hosted Firecrawl vs cloud fallback and summarize it as a document')}>
-                      <div className="wc-title"><FlaskConical size={13} /> Deep Research</div>
+                    <div className="welcome-card" onClick={() => quickPrompt('Research self-hosted Firecrawl vs cloud and summarize as a document')}>
+                      <div className="wc-title"><FlaskConical size={14} /> Deep Research</div>
                       <div className="wc-desc">Document-style research brief</div>
                     </div>
-                    <div className="welcome-card" onClick={() => quickPrompt('Design an AI workflow and include a mermaid diagram plus implementation notes')}>
-                      <div className="wc-title"><Workflow size={13} /> Architecture</div>
-                      <div className="wc-desc">Diagram plus execution canvas</div>
+                    <div className="welcome-card" onClick={() => quickPrompt('Design an AI research pipeline and include a mermaid diagram')}>
+                      <div className="wc-title"><Workflow size={14} /> Architecture</div>
+                      <div className="wc-desc">Diagrams plus execution canvas</div>
                     </div>
                   </div>
                 </div>
@@ -772,10 +945,20 @@ export default function App() {
                     <div className={`message-avatar ${message.role}`}>
                       {message.role === 'user' ? 'U' : 'R'}
                     </div>
-                    <span className="message-role">{message.role === 'user' ? 'You' : modelLabel}</span>
+                    <span className="message-role">{message.role === 'user' ? 'You' : 'RAY · ' + modelLabel}</span>
                   </div>
                   <div className={`message-body ${message.role === 'user' ? 'user-body' : 'assistant-body'}`}>
                     <StructuredContent content={message.content} />
+
+                    {/* Inline Score Cards after the last assistant message */}
+                    {message.role === 'assistant' && message.id === lastAssistantId && (evidence.length > 0 || thinkingLog.length > 0) && (
+                      <RuntimeScoreStrip
+                        evidence={evidence}
+                        thinkingLog={thinkingLog}
+                        mode={mode}
+                        model={modelLabel}
+                      />
+                    )}
 
                     {message.role === 'assistant' && message.id === lastAssistantId && uiPrefs.showThinkingLogs && thinkingLog.length > 0 && (
                       <ThinkingPanel
@@ -793,19 +976,23 @@ export default function App() {
                 </div>
               ))}
 
+              {/* ── Loading / Thinking State ───────────────────────── */}
               {isLoading && (
                 <div className="message msg-appear">
                   <div className="message-header">
                     <div className="message-avatar assistant">R</div>
-                    <span className="message-role">{modelLabel}</span>
+                    <span className="message-role">RAY · {modelLabel}</span>
                   </div>
                   {!messages.length || messages[messages.length - 1]?.role === 'user' ? (
                     <div className="thinking-block">
                       <div className="thinking-visual">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div className="chakra-spinner" />
+                          <div className="thinking-status">{statusText || `Analyzing with ${modelLabel}…`}</div>
+                        </div>
                         <div className="thinking-bar">
                           <div className="thinking-bar-fill" />
                         </div>
-                        <div className="thinking-status">{statusText || `Thinking with ${modelLabel}…`}</div>
                       </div>
                       {uiPrefs.showThinkingLogs && thinkingLog.length > 0 && (
                         <div className="thinking-inline-log">
@@ -822,6 +1009,7 @@ export default function App() {
             </div>
           </div>
 
+          {/* ── Input Area ─────────────────────────────────────────── */}
           <div className="input-area">
             <div className="input-area-inner">
               <form onSubmit={onSubmit}>
@@ -846,12 +1034,13 @@ export default function App() {
                 </div>
               </form>
               <div className="input-hint">
-                {modelLabel} · {mode} mode · DuckDuckGo basic search · Firecrawl self-hosted first · ReLU reranker
+                RAY · {modelLabel} · {mode} mode · DuckDuckGo + Firecrawl + ReLU reranker
               </div>
             </div>
           </div>
         </div>
 
+        {/* ── Artifact Side Panel ──────────────────────────────────── */}
         {artifactPanel && (
           <div className="artifact-panel">
             <div className="artifact-panel-header">
@@ -864,11 +1053,12 @@ export default function App() {
           </div>
         )}
 
+        {/* ── Settings Modal ──────────────────────────────────────── */}
         {settingsOpen && (
           <div className="modal-overlay" onClick={() => setSettingsOpen(false)}>
             <div className="modal" onClick={event => event.stopPropagation()}>
               <div className="modal-header">
-                <h3>Runtime Settings</h3>
+                <h3>⚙️ Runtime Settings</h3>
                 <button className="modal-close" onClick={() => setSettingsOpen(false)}><X size={18} /></button>
               </div>
               <div className="modal-body">
@@ -926,8 +1116,9 @@ export default function App() {
                       value={firecrawlConfig.strategy}
                       onChange={event => setFirecrawlConfig(current => ({ ...current, strategy: event.target.value }))}
                     >
-                      <option value="self_hosted_first">Self-hosted first</option>
+                      <option value="self_hosted_first">Self-hosted first (recommended)</option>
                       <option value="cloud_only">Cloud only</option>
+                      <option value="self_hosted_only">Self-hosted only</option>
                     </select>
                   </div>
 
@@ -954,7 +1145,7 @@ export default function App() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Firecrawl Fallback Key</label>
+                    <label className="form-label">Firecrawl Fallback API Key</label>
                     <input
                       type="password"
                       className="form-input"
@@ -966,13 +1157,28 @@ export default function App() {
                 </div>
 
                 <div className="settings-note">
-                  <div className="section-kicker">Research UI Defaults</div>
-                  <p>DuckDuckGo handles basic web search, Firecrawl handles deep crawling, research responses prefer document blocks, and the frontend renders charts, canvases, diagrams, and orchestration logs inline.</p>
+                  <div className="section-kicker">Firecrawl Self-Host Setup</div>
+                  <p>
+                    Run <code>scripts/start_firecrawl_selfhost.sh</code> to clone and start Firecrawl locally via Docker Compose.
+                    The default endpoint is <code>http://localhost:3002</code>. No API key is required for self-hosted instances
+                    when <code>USE_DB_AUTHENTICATION=false</code>.
+                  </p>
+                </div>
+
+                <div className="settings-note" style={{ marginTop: 12 }}>
+                  <div className="section-kicker">Research Pipeline</div>
+                  <p>
+                    DuckDuckGo handles fast basic search, Firecrawl handles deep page crawling,
+                    ReLU reranking filters evidence by semantic relevance, and the frontend renders
+                    charts, documents, diagrams, and thinking logs inline — all powered by Vercel AI SDK streaming.
+                  </p>
                 </div>
               </div>
               <div className="modal-footer">
                 <button className="btn-ghost" onClick={() => setSettingsOpen(false)}>Cancel</button>
-                <button className="btn-primary" onClick={saveSettings}>Save</button>
+                <button className="btn-primary" onClick={saveSettings}>
+                  <Shield size={14} /> Save Settings
+                </button>
               </div>
             </div>
           </div>
