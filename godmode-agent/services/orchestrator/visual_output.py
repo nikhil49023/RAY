@@ -5,7 +5,15 @@ import re
 from typing import Any
 
 
-VISUAL_TYPES = {"chart", "scoreboard", "table", "timeline"}
+VISUAL_TYPES = {
+    "chart",
+    "scoreboard",
+    "table",
+    "timeline",
+    "diagram",
+    "graph",
+    "illustration",
+}
 
 VISUAL_BLOCK_RE = re.compile(
     r'<visual\s+type="(?P<type>[^"]+)">(?P<body>[\s\S]*?)</visual>',
@@ -38,12 +46,55 @@ Visual output contract:
   4. <visual type="scoreboard">VALID_JSON</visual> for rankings or leaderboards.
   5. <visual type="table">VALID_JSON</visual> for feature comparisons.
   6. <visual type="timeline">VALID_JSON</visual> for dated events or milestones.
-  7. <node-graph>VALID_JSON</node-graph> for concept or entity maps.
-  8. ```scorecard VALID_JSON``` for audits, evaluations, or scored reviews.
-  9. ```mermaid``` for diagrams only when a diagram is clearer than text.
+  7. <visual type="diagram">VALID_JSON</visual> for system architecture, neural networks, pipelines, flowcharts, decision trees, data flow, state machines, concept maps, org charts, sequence diagrams, dependency graphs.
+  8. <visual type="graph">VALID_JSON</visual> for scatter plots, bubble charts, network graphs, sankey diagrams, force-directed graphs, parallel coordinates.
+  9. <visual type="illustration">VALID_JSON</visual> for beautiful intuition-building scenes, conceptual teaching visuals, or premium explainers where flat diagrams feel too mechanical.
+  10. <node-graph>VALID_JSON</node-graph> for concept or entity maps.
+  11. ```scorecard VALID_JSON``` for audits, evaluations, or scored reviews.
+  12. ```mermaid``` ONLY as a last resort when no other format works.
 - Never emit unsupported custom tags, raw HTML widgets, or partial blocks.
 - JSON inside <visual>, <node-graph>, ```chart, and ```scorecard must be strict JSON:
   use double quotes, no comments, no trailing commas, no markdown inside the JSON.
+- For <visual type="diagram"> use this structured spec:
+  {
+    "type": "diagram",
+    "diagramType": "neural_network|pipeline|system_architecture|flowchart|decision_tree|data_flow|state_machine|concept_map|org_chart|sequence|dependency_graph",
+    "title": "Short descriptive title",
+    "subtitle": "Optional subtitle",
+    "nodes": [
+      {"id": "x1", "type": "input|process|output|concept|decision|data|function|system", "label": "Node label", "group": "optional-group", "description": "What this node does", "detail": "Extra detail shown on click", "icon": "optional-icon-key", "weight": 1}
+    ],
+    "edges": [
+      {"source": "x1", "target": "x2", "label": "relationship", "type": "default|smoothstep|step|straight", "animated": true, "description": "What this edge means"}
+    ],
+    "style": {"theme": "modern-3d-education|minimal-clean|glassmorphism|neon-tech|warm-academic", "layout": "hierarchical|radial|force-directed|tree|flowchart", "edgeStyle": "gradient|solid|dashed|dotted", "nodeShape": "rounded|pill|card|circle", "animation": "subtle|moderate|dynamic|none"},
+    "legend": [{"label": "Input", "color": "#6EE7B7"}]
+  }
+- For <visual type="graph"> use this structured spec:
+  {
+    "type": "graph",
+    "graphType": "scatter|bubble|network|sankey|force|parallel",
+    "title": "Short descriptive title",
+    "subtitle": "Optional subtitle",
+    "data": [{"x": 1, "y": 2, "size": 10, "category": "A"}],
+    "xKey": "x",
+    "yKey": "y",
+    "sizeKey": "size",
+    "colorKey": "category",
+    "style": {"theme": "modern-3d-education"}
+  }
+- For <visual type="illustration"> use this structured spec:
+  {
+    "type": "illustration",
+    "title": "Short descriptive title",
+    "prompt": "Detailed visual prompt describing a beautiful and understandable scene with clear hierarchy and subject separation",
+    "style": "cinematic 3d educational render|glassmorphism concept illustration|scientific teaching visual|premium product-grade explainer",
+    "aspectRatio": "16:9|4:3|1:1|3:2",
+    "caption": "Optional one-line explanation of what the image is showing"
+  }
+- For illustrations, prefer scenes that make the idea easier to grasp at a glance.
+- Use depth, lighting, and composition to clarify relationships.
+- Do not ask for embedded text labels inside the image.
 - For <visual type="chart"> use:
   {
     "type": "chart",
@@ -120,13 +171,18 @@ def _extract_balanced_json_candidate(text: str) -> str:
             elif char == closer:
                 depth -= 1
                 if depth == 0:
-                    return value[start:index + 1]
+                    return value[start : index + 1]
     return value
 
 
 def _repair_json_text(raw: str) -> str:
     value = _extract_balanced_json_candidate(_strip_nested_fences(raw))
-    value = value.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
+    value = (
+        value.replace("\u201c", '"')
+        .replace("\u201d", '"')
+        .replace("\u2018", "'")
+        .replace("\u2019", "'")
+    )
     value = re.sub(r",(\s*[}\]])", r"\1", value)
     return value.strip()
 

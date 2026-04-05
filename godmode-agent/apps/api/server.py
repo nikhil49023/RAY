@@ -8,6 +8,7 @@ Adds typed research metadata for documents, charts, sources, and thinking logs.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -31,10 +33,8 @@ import unicodedata
 # Configure structured logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger("ray.api")
 
@@ -72,7 +72,10 @@ execution_index = QdrantIndex(collection_name="execution_index")
 
 # ── CORS Configuration ───────────────────────────────────────────────────── #
 # Environment-based CORS configuration for security
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173").split(",")
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
+).split(",")
 ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
 # Fallback to wildcard only in development mode
 if os.getenv("RAY_ENV", "development") == "development" and not ALLOWED_ORIGINS:
@@ -124,8 +127,7 @@ def _normalize_resource_id(resource_id: str) -> str:
     normalized = unicodedata.normalize("NFKC", resource_id or "").strip()
     if not normalized or not re.fullmatch(r"[a-zA-Z0-9_-]+", normalized):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid resource ID format"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid resource ID format"
         )
     return normalized
 
@@ -139,8 +141,7 @@ def _sanitize_id(resource_id: str, directory: Path) -> Path:
         filepath.resolve().relative_to(directory.resolve())
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid resource ID"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid resource ID"
         )
     return filepath
 
@@ -215,45 +216,57 @@ def _extract_render_blocks(text: str) -> List[dict]:
     matches: List[dict] = []
 
     for match in RENDER_TAG_RE.finditer(text):
-        matches.append({
-            "start": match.start(),
-            "kind": match.group("kind").lower(),
-            "title": match.group("title").strip() or match.group("kind").title(),
-            "body": match.group("body").strip(),
-        })
+        matches.append(
+            {
+                "start": match.start(),
+                "kind": match.group("kind").lower(),
+                "title": match.group("title").strip() or match.group("kind").title(),
+                "body": match.group("body").strip(),
+            }
+        )
 
     for match in RENDER_CODE_RE.finditer(text):
-        matches.append({
-            "start": match.start(),
-            "kind": match.group("lang").lower(),
-            "title": match.group("lang").title(),
-            "body": match.group("body").strip(),
-        })
+        matches.append(
+            {
+                "start": match.start(),
+                "kind": match.group("lang").lower(),
+                "title": match.group("lang").title(),
+                "body": match.group("body").strip(),
+            }
+        )
 
     for item in sorted(matches, key=lambda row: row["start"]):
         if item["kind"] in {"document", "canvas"}:
-            blocks.append({
-                "type": item["kind"],
-                "title": item["title"],
-                "content": item["body"],
-            })
+            blocks.append(
+                {
+                    "type": item["kind"],
+                    "title": item["title"],
+                    "content": item["body"],
+                }
+            )
         elif item["kind"] == "chart":
             chart_payload: Any = item["body"]
             try:
                 chart_payload = json.loads(item["body"])
             except Exception:
                 pass
-            blocks.append({
-                "type": "chart",
-                "title": chart_payload.get("title", "Chart") if isinstance(chart_payload, dict) else "Chart",
-                "chart": chart_payload,
-            })
+            blocks.append(
+                {
+                    "type": "chart",
+                    "title": chart_payload.get("title", "Chart")
+                    if isinstance(chart_payload, dict)
+                    else "Chart",
+                    "chart": chart_payload,
+                }
+            )
         elif item["kind"] == "mermaid":
-            blocks.append({
-                "type": "mermaid",
-                "title": "Diagram",
-                "content": item["body"],
-            })
+            blocks.append(
+                {
+                    "type": "mermaid",
+                    "title": "Diagram",
+                    "content": item["body"],
+                }
+            )
 
     return blocks
 
@@ -322,15 +335,17 @@ def _runtime_model_entries(settings: Dict[str, Any]) -> List[dict]:
         return LLMFactory.list_model_entries()
 
     model_id = runtime.get("codex_model", "openai/gpt-oss-20b")
-    return [{
-        "id": model_id,
-        "label": f"Codex via Groq ({model_id})",
-        "provider": "Codex CLI",
-        "specialty": "CLI agent runtime",
-        "description": "Codex CLI running locally with Groq as its OpenAI-compatible model provider.",
-        "features": ["Tools", "CLI Agent", "Workspace", "Groq"],
-        "is_default": True,
-    }]
+    return [
+        {
+            "id": model_id,
+            "label": f"Codex via Groq ({model_id})",
+            "provider": "Codex CLI",
+            "specialty": "CLI agent runtime",
+            "description": "Codex CLI running locally with Groq as its OpenAI-compatible model provider.",
+            "features": ["Tools", "CLI Agent", "Workspace", "Groq"],
+            "is_default": True,
+        }
+    ]
 
 
 def _resolve_chat_model(requested_model: str, runtime: Dict[str, Any]) -> str:
@@ -359,7 +374,9 @@ class MessageContent(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    messages: List[MessageContent] = Field(default_factory=list, max_length=MAX_MESSAGES)
+    messages: List[MessageContent] = Field(
+        default_factory=list, max_length=MAX_MESSAGES
+    )
     model: str = Field(default="groq/llama-3.3-70b-versatile")
     mode: str = Field(default="standard", pattern="^(standard|research|reasoning)$")
     temperature: float = Field(default=0.1, ge=0.0, le=2.0)
@@ -379,6 +396,89 @@ class ArtifactSave(BaseModel):
     type: str = Field(default="document", pattern="^(document|canvas|chart|mermaid)$")
 
 
+class IllustrationRequest(BaseModel):
+    prompt: str = Field(..., min_length=3, max_length=4000)
+    style: str = Field(default="cinematic 3d educational render", max_length=200)
+    aspectRatio: str = Field(default="16:9", pattern="^(16:9|4:3|1:1|3:2)$")
+
+
+def _illustration_dimensions(aspect_ratio: str) -> tuple[int, int]:
+    return {
+        "16:9": (1344, 768),
+        "4:3": (1152, 896),
+        "1:1": (1024, 1024),
+        "3:2": (1216, 832),
+    }.get(aspect_ratio, (1344, 768))
+
+
+def _fallback_illustration_url(prompt: str, style: str, aspect_ratio: str) -> str:
+    width, height = _illustration_dimensions(aspect_ratio)
+    prompt_text = quote(
+        f"{prompt.strip()}. Style: {style.strip()}. Premium polished educational illustration, clean composition, no text overlays."
+    )
+    return (
+        f"https://image.pollinations.ai/prompt/{prompt_text}"
+        f"?width={width}&height={height}&nologo=true&model=flux"
+    )
+
+
+async def _generate_huggingface_illustration(
+    prompt: str, style: str, aspect_ratio: str
+) -> str:
+    token = (os.getenv("HUGGINGFACE_API_TOKEN") or "").strip()
+    model = (
+        os.getenv("HUGGINGFACE_IMAGE_MODEL") or "black-forest-labs/FLUX.1-schnell"
+    ).strip()
+    if not token:
+        return _fallback_illustration_url(prompt, style, aspect_ratio)
+
+    width, height = _illustration_dimensions(aspect_ratio)
+    full_prompt = (
+        f"{prompt.strip()}. "
+        f"Style: {style.strip()}. "
+        "Create a beautiful, understandable educational illustration with strong visual hierarchy, "
+        "clear subject separation, premium lighting, elegant materials, readable structure, and focused composition. "
+        "Avoid flat infographic look, avoid clutter, avoid tiny details, avoid text overlays, avoid watermarks."
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "image/png",
+    }
+    payload = {
+        "inputs": full_prompt,
+        "parameters": {
+            "width": width,
+            "height": height,
+            "guidance_scale": 6.0,
+            "num_inference_steps": 6,
+        },
+    }
+
+    url = f"https://router.huggingface.co/hf-inference/models/{model}"
+    timeout = httpx.Timeout(120.0, connect=20.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(url, headers=headers, json=payload)
+
+    content_type = response.headers.get("content-type", "")
+    if response.status_code >= 400:
+        logger.warning(
+            "Hugging Face illustration failed with status %s: %s. Falling back.",
+            response.status_code,
+            response.text[:400],
+        )
+        return _fallback_illustration_url(prompt, style, aspect_ratio)
+    if "image/" not in content_type:
+        logger.warning(
+            "Hugging Face illustration returned non-image content type %s. Falling back.",
+            content_type,
+        )
+        return _fallback_illustration_url(prompt, style, aspect_ratio)
+
+    encoded = base64.b64encode(response.content).decode("ascii")
+    return f"data:{content_type};base64,{encoded}"
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CHAT  (Vercel AI SDK Data Stream Protocol)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -391,7 +491,7 @@ async def chat_endpoint(request: Request):
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON in request body"
+            detail="Invalid JSON in request body",
         )
 
     # Validate request
@@ -405,14 +505,16 @@ async def chat_endpoint(request: Request):
         logger.warning(f"Invalid chat request: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid request parameters: {str(e)}"
+            detail=f"Invalid request parameters: {str(e)}",
         )
 
     settings = apply_runtime_settings(load_user_settings())
     runtime = get_agent_runtime_config(settings)
     model = _resolve_chat_model(model, runtime)
 
-    conversation = _to_langchain_messages(messages if isinstance(messages, list) else [])
+    conversation = _to_langchain_messages(
+        messages if isinstance(messages, list) else []
+    )
     user_msg = ""
     for m in reversed(messages):
         if m.get("role") == "user":
@@ -424,7 +526,9 @@ async def chat_endpoint(request: Request):
         conversation = [HumanMessage(content=user_msg)]
 
     user_turns = sum(1 for msg in conversation if isinstance(msg, HumanMessage))
-    retrieved_memory = retrieve_semantic_memory(user_msg, top_k=10 if mode == "research" else 5)
+    retrieved_memory = retrieve_semantic_memory(
+        user_msg, top_k=10 if mode == "research" else 5
+    )
 
     initial_state = {
         "messages": conversation,
@@ -445,14 +549,21 @@ async def chat_endpoint(request: Request):
         "agent_mode": mode,
         "selected_model": model,
         "temperature": temperature,
-        "visuals_enabled": bool(body.get("visualsEnabled", settings.get("ui", {}).get("renderVisualsInline", False))),
+        "visuals_enabled": bool(
+            body.get(
+                "visualsEnabled",
+                settings.get("ui", {}).get("renderVisualsInline", False),
+            )
+        ),
     }
 
     async def generate():
         q: queue.Queue = queue.Queue()
         request_id = uuid.uuid4().hex[:8]
         backend = runtime.get("backend", "langgraph")
-        logger.info(f"[{request_id}] Starting chat request - backend={backend}, model={model}, mode={mode}")
+        logger.info(
+            f"[{request_id}] Starting chat request - backend={backend}, model={model}, mode={mode}"
+        )
 
         def worker():
             if backend == "codex_cli":
@@ -463,7 +574,9 @@ async def chat_endpoint(request: Request):
                         mode=mode,
                         visuals_enabled=bool(initial_state.get("visuals_enabled")),
                         memory_context=str(initial_state.get("memory_context", "")),
-                        behavioral_memories=list(initial_state.get("behavioral_memories", [])),
+                        behavioral_memories=list(
+                            initial_state.get("behavioral_memories", [])
+                        ),
                         model=model,
                         workdir=ROOT_DIR,
                     ):
@@ -473,11 +586,19 @@ async def chat_endpoint(request: Request):
                         elif event_type == "log":
                             q.put(("log", "codex_cli", event))
                         elif event_type == "error":
-                            q.put(("error", None, event.get("error", "Codex execution failed.")))
+                            q.put(
+                                (
+                                    "error",
+                                    None,
+                                    event.get("error", "Codex execution failed."),
+                                )
+                            )
                             return
                         elif event_type == "done":
                             q.put(("done", None, event))
-                            logger.info(f"[{request_id}] Codex CLI execution completed successfully")
+                            logger.info(
+                                f"[{request_id}] Codex CLI execution completed successfully"
+                            )
                             return
 
                     q.put(("error", None, "Codex execution ended unexpectedly."))
@@ -513,7 +634,9 @@ async def chat_endpoint(request: Request):
             if msg_type == "node":
                 status_text = NODE_STATUS.get(node_id or "", f"Running {node_id}…")
                 items: List[dict] = [{"status": status_text, "node": node_id}]
-                node_logs = payload.get("thinking_log", []) if isinstance(payload, dict) else []
+                node_logs = (
+                    payload.get("thinking_log", []) if isinstance(payload, dict) else []
+                )
                 if node_logs:
                     items.append({"thinking_log_append": node_logs})
                 yield "2:" + _js(items) + "\n"
@@ -523,7 +646,9 @@ async def chat_endpoint(request: Request):
                 yield "2:" + _js([{"status": status_text, "node": node_id}]) + "\n"
 
             elif msg_type == "log":
-                node_logs = payload.get("thinking_log", []) if isinstance(payload, dict) else []
+                node_logs = (
+                    payload.get("thinking_log", []) if isinstance(payload, dict) else []
+                )
                 if node_logs:
                     yield "2:" + _js([{"thinking_log_append": node_logs}]) + "\n"
 
@@ -538,9 +663,15 @@ async def chat_endpoint(request: Request):
                     hint = "\n\n**Solution:** Check your API key in Settings. Ensure the key is valid and has proper permissions."
                 elif "rate" in low_err or "429" in err:
                     hint = "\n\n**Solution:** Rate limit reached. Wait 60 seconds or switch to a different model."
-                elif "connection" in low_err or "refused" in low_err or "timeout" in low_err:
+                elif (
+                    "connection" in low_err
+                    or "refused" in low_err
+                    or "timeout" in low_err
+                ):
                     hint = "\n\n**Solution:** Connection failed. Check if the service is running:\n- For Ollama: `ollama serve`\n- For Firecrawl: verify the self-hosted endpoint"
-                elif "model" in low_err and ("not found" in low_err or "unavailable" in low_err):
+                elif "model" in low_err and (
+                    "not found" in low_err or "unavailable" in low_err
+                ):
                     hint = "\n\n**Solution:** Model not available. Select a different model from the dropdown."
                 yield "0:" + _js("Error: " + err + hint) + "\n"
                 yield "e:" + _js({"finishReason": "error"}) + "\n"
@@ -564,25 +695,29 @@ async def chat_endpoint(request: Request):
                 render_blocks = _extract_render_blocks(answer)
                 research_brief = _primary_document_text(answer, render_blocks)
 
-                logger.info(f"[{request_id}] Response ready - evidence={len(evidence)}, blocks={len(render_blocks)}")
+                logger.info(
+                    f"[{request_id}] Response ready - evidence={len(evidence)}, blocks={len(render_blocks)}"
+                )
 
                 chunk_size = 50
                 for i in range(0, len(answer), chunk_size):
-                    yield "0:" + _js(answer[i:i + chunk_size]) + "\n"
+                    yield "0:" + _js(answer[i : i + chunk_size]) + "\n"
                     await asyncio.sleep(0.006)
 
                 annotations: List[dict] = []
                 if evidence:
                     safe_evidence = []
                     for item in evidence[:10]:
-                        safe_evidence.append({
-                            "source": item.get("source", ""),
-                            "title": item.get("title", ""),
-                            "url": item.get("url", ""),
-                            "claim": str(item.get("claim", ""))[:200],
-                            "provider": item.get("provider", ""),
-                            "relu_score": item.get("relu_score", 0),
-                        })
+                        safe_evidence.append(
+                            {
+                                "source": item.get("source", ""),
+                                "title": item.get("title", ""),
+                                "url": item.get("url", ""),
+                                "claim": str(item.get("claim", ""))[:200],
+                                "provider": item.get("provider", ""),
+                                "relu_score": item.get("relu_score", 0),
+                            }
+                        )
                     annotations.append({"evidence": safe_evidence})
 
                 if thinking_log:
@@ -592,48 +727,74 @@ async def chat_endpoint(request: Request):
                     annotations.append({"render_blocks": render_blocks[:12]})
 
                 if final_state.get("plan"):
-                    annotations.append({
-                        "plan": str(final_state.get("plan", ""))[:2000],
-                        "research_level": final_state.get("research_level", "basic"),
-                    })
+                    annotations.append(
+                        {
+                            "plan": str(final_state.get("plan", ""))[:2000],
+                            "research_level": final_state.get(
+                                "research_level", "basic"
+                            ),
+                        }
+                    )
 
                 if final_state.get("memory_hits"):
-                    annotations.append({"memory_hits": final_state.get("memory_hits", [])[:5]})
+                    annotations.append(
+                        {"memory_hits": final_state.get("memory_hits", [])[:5]}
+                    )
 
                 if annotations:
                     yield "2:" + _js(annotations) + "\n"
 
                 if mode == "research" and (research_brief or evidence):
-                    rid = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
-                    (RESEARCH_DIR / f"{rid}.json").write_text(_js({
-                        "id": rid,
-                        "query": user_msg[:200],
-                        "brief": research_brief[:6000],
-                        "sources": [
+                    rid = (
+                        datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_")
+                        + uuid.uuid4().hex[:6]
+                    )
+                    (RESEARCH_DIR / f"{rid}.json").write_text(
+                        _js(
                             {
-                                "source": item.get("source"),
-                                "title": item.get("title"),
-                                "url": item.get("url"),
+                                "id": rid,
+                                "query": user_msg[:200],
+                                "brief": research_brief[:6000],
+                                "sources": [
+                                    {
+                                        "source": item.get("source"),
+                                        "title": item.get("title"),
+                                        "url": item.get("url"),
+                                    }
+                                    for item in evidence[:10]
+                                ],
+                                "model": model,
+                                "plan": str(final_state.get("plan", ""))[:2000],
+                                "thinking_log": thinking_log,
+                                "created_at": datetime.now(timezone.utc).isoformat(),
                             }
-                            for item in evidence[:10]
-                        ],
-                        "model": model,
-                        "plan": str(final_state.get("plan", ""))[:2000],
-                        "thinking_log": thinking_log,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    }), encoding="utf-8")
+                        ),
+                        encoding="utf-8",
+                    )
 
                 for block in render_blocks:
                     _save_generated_artifact(block)
 
-                yield "e:" + _js({
-                    "finishReason": "stop",
-                    "usage": {"promptTokens": 0, "completionTokens": 0},
-                }) + "\n"
-                yield "d:" + _js({
-                    "finishReason": "stop",
-                    "usage": {"promptTokens": 0, "completionTokens": 0},
-                }) + "\n"
+                yield (
+                    "e:"
+                    + _js(
+                        {
+                            "finishReason": "stop",
+                            "usage": {"promptTokens": 0, "completionTokens": 0},
+                        }
+                    )
+                    + "\n"
+                )
+                yield (
+                    "d:"
+                    + _js(
+                        {
+                            "finishReason": "stop",
+                            "usage": {"promptTokens": 0, "completionTokens": 0},
+                        }
+                    )
+                    + "\n"
+                )
                 return
 
         yield "0:" + _js("Processing ended unexpectedly. Please try again.") + "\n"
@@ -658,7 +819,10 @@ async def list_models():
     models = _runtime_model_entries(settings)
     return {
         "models": models,
-        "defaultModel": next((item["id"] for item in models if item.get("is_default")), models[0]["id"] if models else None),
+        "defaultModel": next(
+            (item["id"] for item in models if item.get("is_default")),
+            models[0]["id"] if models else None,
+        ),
         "singleModelMode": len(models) <= 1,
     }
 
@@ -702,19 +866,27 @@ async def codex_proxy_responses(request: Request):
             "Content-Type": content_type,
         }
         async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream("POST", target_url, headers=headers, content=filtered_body) as response:
+            async with client.stream(
+                "POST", target_url, headers=headers, content=filtered_body
+            ) as response:
                 if response.status_code >= 400:
                     error_body = await response.aread()
                     try:
                         payload_preview = json.loads(filtered_body.decode("utf-8"))
                     except Exception:
-                        payload_preview = {"raw": filtered_body.decode("utf-8", errors="replace")[:2000]}
+                        payload_preview = {
+                            "raw": filtered_body.decode("utf-8", errors="replace")[
+                                :2000
+                            ]
+                        }
                     if isinstance(payload_preview, dict):
                         preview = dict(payload_preview)
                         instructions = preview.get("instructions")
                         if isinstance(instructions, str):
                             preview["instructions"] = instructions[:240]
-                        preview["input"] = f"<{len(preview.get('input', []))} input items>"
+                        preview["input"] = (
+                            f"<{len(preview.get('input', []))} input items>"
+                        )
                         payload_preview = preview
                     logger.error(
                         "Codex proxy upstream error %s payload=%s response=%s",
@@ -744,30 +916,48 @@ async def codex_proxy_responses(request: Request):
 async def list_threads():
     items = _load_json_dir(THREADS_DIR)
     return {
-        "threads": [{
-            "id": item["id"],
-            "title": item.get("title", "Untitled"),
-            "updated_at": item.get("updated_at", ""),
-            "message_count": len(item.get("messages", [])),
-        } for item in items[:30]]
+        "threads": [
+            {
+                "id": item["id"],
+                "title": item.get("title", "Untitled"),
+                "updated_at": item.get("updated_at", ""),
+                "message_count": len(item.get("messages", [])),
+            }
+            for item in items[:30]
+        ]
     }
 
 
 @app.post("/api/threads")
 async def save_thread(body: ThreadSave):
-    tid = _normalize_resource_id(body.id) if body.id else datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
+    tid = (
+        _normalize_resource_id(body.id)
+        if body.id
+        else datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_")
+        + uuid.uuid4().hex[:6]
+    )
     existing = _safe_json_load(THREADS_DIR / f"{tid}.json") if body.id else None
     data = {
         "id": tid,
         "title": body.title[:MAX_TITLE_LENGTH],
         "messages": body.messages[:MAX_MESSAGES],
-        "created_at": (existing or {}).get("created_at", datetime.now(timezone.utc).isoformat()),
+        "created_at": (existing or {}).get(
+            "created_at", datetime.now(timezone.utc).isoformat()
+        ),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     filepath = THREADS_DIR / f"{tid}.json"
     filepath.write_text(_js(data), encoding="utf-8")
-    user_text = "\n\n".join(str(item.get("content", "")) for item in body.messages if item.get("role") == "user")
-    assistant_text = "\n\n".join(str(item.get("content", "")) for item in body.messages if item.get("role") == "assistant")
+    user_text = "\n\n".join(
+        str(item.get("content", ""))
+        for item in body.messages
+        if item.get("role") == "user"
+    )
+    assistant_text = "\n\n".join(
+        str(item.get("content", ""))
+        for item in body.messages
+        if item.get("role") == "assistant"
+    )
     write_semantic_memory(
         user_input=user_text,
         assistant_output=assistant_text,
@@ -783,11 +973,15 @@ async def get_thread(tid: str):
     try:
         filepath = _sanitize_id(tid, THREADS_DIR)
     except HTTPException:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found"
+        )
 
     data = _safe_json_load(filepath)
     if data is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found"
+        )
     return data
 
 
@@ -803,7 +997,9 @@ async def delete_thread(tid: str):
         try:
             execution_index.delete_by_field("session_id", tid)
         except Exception as exc:
-            logger.warning(f"Failed to delete archived semantic memory for thread {tid}: {exc}")
+            logger.warning(
+                f"Failed to delete archived semantic memory for thread {tid}: {exc}"
+            )
         logger.info(f"Deleted thread: {tid}")
     return {"ok": True}
 
@@ -817,13 +1013,16 @@ async def delete_thread(tid: str):
 async def list_artifacts():
     items = _load_json_dir(ARTIFACTS_DIR)
     return {
-        "artifacts": [{
-            "id": item["id"],
-            "title": item.get("title", ""),
-            "type": item.get("type", ""),
-            "created_at": item.get("created_at", ""),
-            "preview": item.get("content", "")[:150],
-        } for item in items[:30]]
+        "artifacts": [
+            {
+                "id": item["id"],
+                "title": item.get("title", ""),
+                "type": item.get("type", ""),
+                "created_at": item.get("created_at", ""),
+                "preview": item.get("content", "")[:150],
+            }
+            for item in items[:30]
+        ]
     }
 
 
@@ -848,11 +1047,15 @@ async def get_artifact(aid: str):
     try:
         filepath = _sanitize_id(aid, ARTIFACTS_DIR)
     except HTTPException:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found"
+        )
 
     data = _safe_json_load(filepath)
     if data is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found"
+        )
     return data
 
 
@@ -865,13 +1068,16 @@ async def get_artifact(aid: str):
 async def list_research():
     items = _load_json_dir(RESEARCH_DIR)
     return {
-        "sessions": [{
-            "id": item["id"],
-            "query": item.get("query", ""),
-            "model": item.get("model", ""),
-            "created_at": item.get("created_at", ""),
-            "source_count": len(item.get("sources", [])),
-        } for item in items[:30]]
+        "sessions": [
+            {
+                "id": item["id"],
+                "query": item.get("query", ""),
+                "model": item.get("model", ""),
+                "created_at": item.get("created_at", ""),
+                "source_count": len(item.get("sources", [])),
+            }
+            for item in items[:30]
+        ]
     }
 
 
@@ -880,11 +1086,15 @@ async def get_research(rid: str):
     try:
         filepath = _sanitize_id(rid, RESEARCH_DIR)
     except HTTPException:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Research session not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Research session not found"
+        )
 
     data = _safe_json_load(filepath)
     if data is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Research session not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Research session not found"
+        )
     return data
 
 
@@ -905,14 +1115,13 @@ async def save_settings(request: Request):
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON in request body"
+            detail="Invalid JSON in request body",
         )
 
     # Validate settings structure
     if not isinstance(data, dict):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Settings must be an object"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Settings must be an object"
         )
 
     # Sanitize sensitive data in logs
@@ -922,6 +1131,22 @@ async def save_settings(request: Request):
     settings = save_user_settings(data)
     apply_runtime_settings(settings)
     return {"ok": True, "settings": settings}
+
+
+@app.post("/api/illustrations")
+async def generate_illustration(body: IllustrationRequest):
+    image_url = await _generate_huggingface_illustration(
+        prompt=body.prompt,
+        style=body.style,
+        aspect_ratio=body.aspectRatio,
+    )
+    return {
+        "imageUrl": image_url,
+        "model": (
+            os.getenv("HUGGINGFACE_IMAGE_MODEL") or "black-forest-labs/FLUX.1-schnell"
+        ).strip(),
+        "aspectRatio": body.aspectRatio,
+    }
 
 
 if __name__ == "__main__":

@@ -13,7 +13,10 @@
     "@langchain/langgraph": "^1.2.7",
     "@langchain/openai": "^1.4.2",
     "@mendable/firecrawl-js": "^4.18.1",
+    "@xyflow/react": "^12.10.2",
     "ai": "^4.3.16",
+    "d3": "^7.9.0",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^0.468.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -21,6 +24,7 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@types/d3": "^7.4.3",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",

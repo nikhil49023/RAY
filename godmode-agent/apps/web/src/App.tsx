@@ -8,6 +8,10 @@ import {
   Workflow, X, Zap, TrendingUp, BarChart3, Shield, Globe2, Trash2,
   PieChart, Layers, Radio, Sigma, FunctionSquare, Atom,
 } from 'lucide-react'
+import { FlowDiagram } from './visual/FlowDiagram'
+import { D3Graph } from './visual/D3Graph'
+import { IllustrationCard } from './visual/IllustrationCard'
+import type { DiagramSpec, GraphSpec, IllustrationSpec } from './visual/types'
 
 /* ═══════════════════════════════════════════════════════════════════
    TYPE DEFINITIONS
@@ -236,6 +240,8 @@ type RenderSegment =
   | { type: 'mermaid'; content: string }
   | { type: 'visual'; visualType: string; raw: string; data?: unknown }
   | { type: 'node-graph'; raw: string; graph?: NodeGraphSpec }
+  | { type: 'diagram'; raw: string; spec?: DiagramSpec }
+  | { type: 'd3graph'; raw: string; spec?: GraphSpec }
   | { type: 'widget'; tag: string; content: string }
   | { type: 'math-equation'; raw: string; spec?: MathEquationSpec }
   | { type: 'physics-wave'; raw: string; spec?: PhysicsWaveSpec }
@@ -367,6 +373,12 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
   return response.json() as Promise<T>
 }
 
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+
+function apiUrl(path: string): string {
+  return API_BASE ? `${API_BASE}${path}` : path
+}
+
 function normalizeModelsResponse(payload: ModelsResponse): { models: ModelEntry[]; defaultModel: string | null; singleModelMode: boolean } {
   const rawModels = payload.models
   let models: ModelEntry[] = []
@@ -405,23 +417,23 @@ function normalizeModelsResponse(payload: ModelsResponse): { models: ModelEntry[
    ═══════════════════════════════════════════════════════════════════ */
 
 const api = {
-  models: () => requestJson<ModelsResponse>('/api/models'),
-  threads: () => requestJson<{ threads?: ThreadItem[] }>('/api/threads'),
-  thread: (id: string) => requestJson<{ messages?: { role: string; content: string }[] }>(`/api/threads/${id}`),
+  models: () => requestJson<ModelsResponse>(apiUrl('/api/models')),
+  threads: () => requestJson<{ threads?: ThreadItem[] }>(apiUrl('/api/threads')),
+  thread: (id: string) => requestJson<{ messages?: { role: string; content: string }[] }>(apiUrl(`/api/threads/${id}`)),
   saveThread: (id: string, title: string, messages: { role: string; content: string }[]) =>
-    requestJson<{ id: string }>('/api/threads', {
+    requestJson<{ id: string }>(apiUrl('/api/threads'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, title, messages }),
     }),
-  deleteThread: (id: string) => fetch(`/api/threads/${id}`, { method: 'DELETE' }),
-  artifacts: () => requestJson<{ artifacts?: ArtifactItem[] }>('/api/artifacts'),
-  artifact: (id: string) => requestJson<{ title: string; content: string }>(`/api/artifacts/${id}`),
-  research: () => requestJson<{ sessions?: ResearchItem[] }>('/api/research'),
-  researchItem: (id: string) => requestJson<{ query?: string; brief?: string }>(`/api/research/${id}`),
-  settings: () => requestJson<AppSettings>('/api/settings'),
+  deleteThread: (id: string) => fetch(apiUrl(`/api/threads/${id}`), { method: 'DELETE' }),
+  artifacts: () => requestJson<{ artifacts?: ArtifactItem[] }>(apiUrl('/api/artifacts')),
+  artifact: (id: string) => requestJson<{ title: string; content: string }>(apiUrl(`/api/artifacts/${id}`)),
+  research: () => requestJson<{ sessions?: ResearchItem[] }>(apiUrl('/api/research')),
+  researchItem: (id: string) => requestJson<{ query?: string; brief?: string }>(apiUrl(`/api/research/${id}`)),
+  settings: () => requestJson<AppSettings>(apiUrl('/api/settings')),
   saveSettings: (settings: object) =>
-    requestJson('/api/settings', {
+    requestJson(apiUrl('/api/settings'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings),
@@ -753,12 +765,26 @@ function parseStructuredContent(content: string): RenderSegment[] {
         content: body || '',
       })
     } else if (visualType) {
-      segments.push({
-        type: 'visual',
-        visualType,
-        raw: visualBody,
-        data: parseJsonBlock(visualBody),
-      })
+      if (visualType === 'diagram') {
+        segments.push({
+          type: 'diagram',
+          raw: visualBody,
+          spec: parseJsonBlock<DiagramSpec>(visualBody),
+        })
+      } else if (visualType === 'graph') {
+        segments.push({
+          type: 'd3graph',
+          raw: visualBody,
+          spec: parseJsonBlock<GraphSpec>(visualBody),
+        })
+      } else {
+        segments.push({
+          type: 'visual',
+          visualType,
+          raw: visualBody,
+          data: parseJsonBlock(visualBody),
+        })
+      }
     } else if (nodeGraphBody) {
       segments.push({
         type: 'node-graph',
@@ -2137,6 +2163,9 @@ function StructuredContent({ content, onPrompt }: { content: string; onPrompt?: 
           if (segment.visualType === 'timeline') {
             return <VisualTimelineCard key={`visual-timeline-${index}`} spec={segment.data as VisualTimelineSpec | undefined} raw={segment.raw} />
           }
+          if (segment.visualType === 'illustration') {
+            return <IllustrationCard key={`visual-illustration-${index}`} spec={segment.data as IllustrationSpec | undefined} raw={segment.raw} />
+          }
           if (segment.visualType === 'math-equation') {
             return <MathEquationCard key={`visual-math-${index}`} spec={segment.data as MathEquationSpec | undefined} raw={segment.raw} />
           }
@@ -2163,6 +2192,12 @@ function StructuredContent({ content, onPrompt }: { content: string; onPrompt?: 
         }
         if (segment.type === 'node-graph') {
           return <NodeGraphCard key={`node-graph-${index}`} graph={segment.graph} raw={segment.raw} onPrompt={onPrompt} />
+        }
+        if (segment.type === 'diagram') {
+          return <FlowDiagram key={`diagram-${index}`} spec={segment.spec as DiagramSpec} raw={segment.raw} />
+        }
+        if (segment.type === 'd3graph') {
+          return <D3Graph key={`d3graph-${index}`} spec={segment.spec as GraphSpec} raw={segment.raw} />
         }
         if (segment.type === 'widget') {
           return <EmbeddedWidget key={`widget-${segment.tag}-${index}`} tag={segment.tag} content={segment.content} />
@@ -2319,7 +2354,7 @@ export default function App() {
     data,
     append,
   } = useChat({
-    api: '/api/chat',
+    api: apiUrl('/api/chat'),
     body: { model: selectedModel, mode, temperature, visualsEnabled: visualMode, sessionId: currentSessionId },
     onFinish: () => {
       setStatusText('')

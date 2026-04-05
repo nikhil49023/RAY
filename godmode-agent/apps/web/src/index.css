@@ -3158,3 +3158,321 @@ body.is-resizing {
   font-size: 12px;
   border: 1px solid rgba(122, 158, 126, 0.12);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   FLOW DIAGRAM (React Flow)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.flow-diagram-container {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  margin: 16px 0;
+}
+
+.flow-diagram-header {
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.flow-diagram-title h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #F1F5F9;
+}
+
+.flow-diagram-title p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #94A3B8;
+}
+
+.flow-diagram-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.flow-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #94A3B8;
+}
+
+.flow-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.flow-diagram-canvas {
+  height: 520px;
+  position: relative;
+}
+
+.flow-diagram-canvas .react-flow__background {
+  background-color: transparent;
+}
+
+.flow-diagram-canvas .react-flow__controls {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.flow-diagram-canvas .react-flow__controls-button {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  color: #94A3B8;
+}
+
+.flow-diagram-canvas .react-flow__controls-button:hover {
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.flow-diagram-canvas .react-flow__minimap {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+}
+
+.flow-node-detail-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 280px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 12px;
+  padding: 16px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+}
+
+.flow-detail-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: #94A3B8;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+.flow-detail-close:hover {
+  color: #F1F5F9;
+}
+
+.flow-node-detail-panel h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #F1F5F9;
+}
+
+.flow-detail-type {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6EE7B7;
+  background: rgba(110, 231, 183, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.flow-node-detail-panel p {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #94A3B8;
+  line-height: 1.5;
+}
+
+.flow-detail-content {
+  font-size: 12px;
+  color: #CBD5E1;
+  line-height: 1.6;
+  padding: 8px 12px;
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   D3 GRAPH
+   ═══════════════════════════════════════════════════════════════════ */
+
+.d3-graph-container {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  margin: 16px 0;
+}
+
+.d3-graph-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.d3-graph-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #F1F5F9;
+}
+
+.d3-graph-header p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #94A3B8;
+}
+
+.d3-graph-container .dot {
+  transition: all 0.15s ease;
+}
+
+.d3-graph-container .tick text {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.d3-graph-container .domain {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CUSTOM NODE (React Flow)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.custom-node {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.custom-node:hover {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   VISUAL INTELLIGENCE — Adaptive Display
+   ═══════════════════════════════════════════════════════════════════ */
+
+.visual-intelligence-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(148, 163, 184, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 8px;
+  font-size: 11px;
+  color: #94A3B8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.visual-intelligence-toggle:hover {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.visual-intelligence-toggle.active {
+  background: rgba(110, 231, 183, 0.08);
+  border-color: rgba(110, 231, 183, 0.2);
+  color: #6EE7B7;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ILLUSTRATION CARD
+   ═══════════════════════════════════════════════════════════════════ */
+
+.illustration-card {
+  overflow: hidden;
+}
+
+.illustration-card-body {
+  padding: 14px 18px 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.illustration-card-prompt {
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.illustration-loading-shell {
+  position: relative;
+  min-height: 280px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(34, 34, 48, 0.9), rgba(18, 18, 28, 0.98));
+}
+
+.illustration-loading-shimmer {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(110, 231, 183, 0.14), transparent 32%),
+    radial-gradient(circle at 78% 28%, rgba(167, 139, 250, 0.12), transparent 30%),
+    radial-gradient(circle at 50% 82%, rgba(197, 138, 87, 0.12), transparent 34%);
+}
+
+.illustration-loading-copy {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  z-index: 1;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.illustration-media-wrap {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(12, 12, 18, 0.82);
+}
+
+.illustration-media {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.illustration-error {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(185, 92, 107, 0.18);
+  background: rgba(185, 92, 107, 0.08);
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.illustration-error strong {
+  color: var(--text);
+}

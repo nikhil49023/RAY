@@ -1,0 +1,37 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: godmode-agent/Dockerfile.backend
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./godmode-agent:/app/godmode-agent
+      - ./requirements.txt:/app/requirements.txt:ro
+    environment:
+      - RAY_ENV=development
+      - GROQ_API_KEY=${GROQ_API_KEY:-your_groq_key_here}
+      - SARVAM_API_KEY=${SARVAM_API_KEY:-your_sarvam_key_here}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-your_openrouter_key_here}
+    command: >
+      sh -c "pip install -r /app/requirements.txt &&
+             python -m uvicorn apps.api.server:app --host 0.0.0.0 --port 8002 --reload"
+
+  frontend:
+    build:
+      context: ./godmode-agent/apps/web
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./godmode-agent/apps/web:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://backend:8002
+    command: >
+      sh -c "npm install &&
+             npm run preview -- --host 0.0.0.0 --port 3000"
+
+networks:
+  default:
+    name: ray-sidecar
