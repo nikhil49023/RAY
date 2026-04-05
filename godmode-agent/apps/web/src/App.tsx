@@ -3,8 +3,8 @@ import { useChat } from '@ai-sdk/react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
-  Activity, Brain, ChartColumn, Compass, FileText, FlaskConical, MessageSquare,
-  PanelLeft, PanelLeftClose, Plus, Search, Send, Settings, Sparkles, Square,
+  Activity, Brain, ChartColumn, FileText, FlaskConical, MessageSquare,
+  PanelLeft, PanelLeftClose, Plus, Send, Settings, Square,
   Workflow, X, Zap, TrendingUp, BarChart3, Shield, Globe2,
 } from 'lucide-react'
 
@@ -12,7 +12,20 @@ import {
    TYPE DEFINITIONS
    ═══════════════════════════════════════════════════════════════════ */
 
-interface ModelEntry { id: string; label: string }
+interface ModelEntry {
+  id: string
+  label: string
+  provider: string
+  specialty: string
+  description: string
+  features: string[]
+  is_default?: boolean
+}
+interface ModelsResponse {
+  models?: ModelEntry[] | Record<string, string>
+  defaultModel?: string | null
+  singleModelMode?: boolean
+}
 interface ThreadItem { id: string; title: string; updated_at: string; message_count: number }
 interface ArtifactItem { id: string; title: string; type: string; created_at: string; preview: string }
 interface ResearchItem { id: string; query: string; model: string; created_at: string; source_count: number }
@@ -45,11 +58,21 @@ interface UiSettings {
   renderVisualsInline: boolean
   researchOutput: string
 }
+interface AgentRuntimeSettings {
+  backend: string
+  codexPath: string
+  codexModel: string
+  codexProviderId: string
+  codexBaseUrl: string
+  codexSandbox: string
+  codexApprovalPolicy: string
+}
 interface AppSettings {
   temperature?: number
   apiKeys?: { groq?: string; sarvam?: string; openrouter?: string }
   firecrawl?: Partial<FirecrawlSettings>
   ui?: Partial<UiSettings>
+  agentRuntime?: Partial<AgentRuntimeSettings>
 }
 interface ChartSeries {
   label: string
@@ -63,40 +86,98 @@ interface ChartSpec {
   series?: ChartSeries[]
   datasets?: ChartSeries[]
 }
+interface ScorecardMetric {
+  label: string
+  value: number
+  tone?: 'good' | 'warning' | 'critical' | string
+}
+interface ScorecardSpec {
+  title?: string
+  score?: number
+  maxScore?: number
+  verdict?: string
+  summary?: string
+  metrics?: ScorecardMetric[]
+  strengths?: string[]
+  gaps?: string[]
+}
 
 type SidebarTab = 'history' | 'artifacts' | 'research'
 type RenderSegment =
   | { type: 'markdown'; content: string }
   | { type: 'document' | 'canvas'; title: string; content: string }
   | { type: 'chart'; raw: string; chart?: ChartSpec }
+  | { type: 'scorecard'; raw: string; scorecard?: ScorecardSpec }
   | { type: 'mermaid'; content: string }
+
+async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const response = await fetch(input, init)
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => '')).trim()
+    throw new Error(detail || `Request failed with status ${response.status}`)
+  }
+  return response.json() as Promise<T>
+}
+
+function normalizeModelsResponse(payload: ModelsResponse): { models: ModelEntry[]; defaultModel: string | null; singleModelMode: boolean } {
+  const rawModels = payload.models
+  let models: ModelEntry[] = []
+
+  if (Array.isArray(rawModels)) {
+    models = rawModels.map((model, index) => ({
+      ...model,
+      provider: model.provider || model.id.split('/', 1)[0].toUpperCase(),
+      specialty: model.specialty || 'General assistant',
+      description: model.description || 'General-purpose chat and task assistance.',
+      features: Array.isArray(model.features) ? model.features : ['Chat'],
+      is_default: model.is_default ?? index === 0,
+    }))
+  } else if (rawModels && typeof rawModels === 'object') {
+    models = Object.entries(rawModels).map(([id, label], index) => ({
+      id,
+      label,
+      provider: id.split('/', 1)[0].toUpperCase(),
+      specialty: 'General assistant',
+      description: 'General-purpose chat and task assistance.',
+      features: ['Chat'],
+      is_default: index === 0,
+    }))
+  }
+
+  const defaultModel = payload.defaultModel || models.find(model => model.is_default)?.id || models[0]?.id || null
+  return {
+    models,
+    defaultModel,
+    singleModelMode: payload.singleModelMode ?? models.length <= 1,
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    API LAYER
    ═══════════════════════════════════════════════════════════════════ */
 
 const api = {
-  models: () => fetch('/api/models').then(r => r.json()),
-  threads: () => fetch('/api/threads').then(r => r.json()),
-  thread: (id: string) => fetch(`/api/threads/${id}`).then(r => r.json()),
+  models: () => requestJson<ModelsResponse>('/api/models'),
+  threads: () => requestJson<{ threads?: ThreadItem[] }>('/api/threads'),
+  thread: (id: string) => requestJson<{ messages?: { role: string; content: string }[] }>(`/api/threads/${id}`),
   saveThread: (title: string, messages: { role: string; content: string }[]) =>
-    fetch('/api/threads', {
+    requestJson<{ id: string }>('/api/threads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, messages }),
-    }).then(r => r.json()),
+    }),
   deleteThread: (id: string) => fetch(`/api/threads/${id}`, { method: 'DELETE' }),
-  artifacts: () => fetch('/api/artifacts').then(r => r.json()),
-  artifact: (id: string) => fetch(`/api/artifacts/${id}`).then(r => r.json()),
-  research: () => fetch('/api/research').then(r => r.json()),
-  researchItem: (id: string) => fetch(`/api/research/${id}`).then(r => r.json()),
-  settings: () => fetch('/api/settings').then(r => r.json()),
+  artifacts: () => requestJson<{ artifacts?: ArtifactItem[] }>('/api/artifacts'),
+  artifact: (id: string) => requestJson<{ title: string; content: string }>(`/api/artifacts/${id}`),
+  research: () => requestJson<{ sessions?: ResearchItem[] }>('/api/research'),
+  researchItem: (id: string) => requestJson<{ query?: string; brief?: string }>(`/api/research/${id}`),
+  settings: () => requestJson<AppSettings>('/api/settings'),
   saveSettings: (settings: object) =>
-    fetch('/api/settings', {
+    requestJson('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings),
-    }).then(r => r.json()),
+    }),
 }
 
 const DEFAULT_FIRECRAWL: FirecrawlSettings = {
@@ -108,8 +189,18 @@ const DEFAULT_FIRECRAWL: FirecrawlSettings = {
 
 const DEFAULT_UI: UiSettings = {
   showThinkingLogs: true,
-  renderVisualsInline: true,
+  renderVisualsInline: false,
   researchOutput: 'document',
+}
+
+const DEFAULT_AGENT_RUNTIME: AgentRuntimeSettings = {
+  backend: 'langgraph',
+  codexPath: 'codex',
+  codexModel: 'openai/gpt-oss-20b',
+  codexProviderId: 'groq',
+  codexBaseUrl: 'https://api.groq.com/openai/v1',
+  codexSandbox: 'workspace-write',
+  codexApprovalPolicy: 'never',
 }
 
 /* ── Indian-Authentic Vibrant Chart Palette ────────────────────── */
@@ -151,15 +242,6 @@ function Md({ children }: { children: string }) {
    SCORECARD & GAUGE COMPONENTS
    ═══════════════════════════════════════════════════════════════════ */
 
-function ScoreCard({ value, label, color = 'teal' }: { value: string | number; label: string; color?: string }) {
-  return (
-    <div className="scorecard">
-      <div className={`scorecard-value ${color}`}>{value}</div>
-      <div className="scorecard-label">{label}</div>
-    </div>
-  )
-}
-
 function GaugeDonut({ value, max, label }: { value: number; max: number; label: string }) {
   const radius = 44
   const circumference = 2 * Math.PI * radius
@@ -193,31 +275,32 @@ function GaugeDonut({ value, max, label }: { value: number; max: number; label: 
   )
 }
 
-function RuntimeScoreStrip({
+function ResponseMetaRow({
   evidence,
   thinkingLog,
   mode,
-  model,
 }: {
   evidence: EvidenceItem[]
   thinkingLog: ThinkingLogItem[]
   mode: string
-  model: string
 }) {
   const sourceCount = evidence.length
-  const avgScore = evidence.length > 0
-    ? (evidence.reduce((sum, e) => sum + (e.relu_score || 0), 0) / evidence.length).toFixed(2)
-    : '—'
+  const stepCount = Math.max(thinkingLog.length, 1)
   const providers = [...new Set(evidence.map(e => e.provider).filter(Boolean))].length
 
   return (
-    <div className="scorecard-strip">
-      <ScoreCard value={sourceCount} label="Sources" color="teal" />
-      <ScoreCard value={avgScore} label="Avg ReLU Score" color="gold" />
-      <ScoreCard value={thinkingLog.length} label="Thinking Steps" color="saffron" />
-      <ScoreCard value={providers || '—'} label="Providers" color="pink" />
+    <div className="response-meta-row">
+      <span>{sourceCount} sources</span>
+      <span>{researchDepthLabel(mode, stepCount)}</span>
+      {providers > 1 && <span>{providers} providers</span>}
     </div>
   )
+}
+
+function researchDepthLabel(mode: string, stepCount: number) {
+  if (mode === 'reasoning') return `${stepCount || 1} step`
+  if (mode === 'research') return 'research'
+  return 'direct'
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -247,7 +330,7 @@ function normalizeChart(input: ChartSpec | undefined): ChartSpec | null {
 function parseStructuredContent(content: string): RenderSegment[] {
   if (!content) return []
 
-  const pattern = /<(document|canvas):\s*(.*?)>([\s\S]*?)<\/(?:document|canvas)>|```(chart|mermaid)\s*([\s\S]*?)```/gi
+  const pattern = /<(document|canvas):\s*(.*?)>([\s\S]*?)<\/(?:document|canvas)>|```(chart|scorecard|mermaid)\s*([\s\S]*?)```/gi
   const segments: RenderSegment[] = []
   let lastIndex = 0
 
@@ -270,14 +353,18 @@ function parseStructuredContent(content: string): RenderSegment[] {
         title: title || (blockType === 'document' ? 'Document' : 'Canvas'),
         content: body || '',
       })
-    } else if (fenceType === 'chart') {
-      let chart: ChartSpec | undefined
+    } else if (fenceType === 'chart' || fenceType === 'scorecard') {
+      let parsed: ChartSpec | ScorecardSpec | undefined
       try {
-        chart = JSON.parse(fenceBody) as ChartSpec
+        parsed = JSON.parse(fenceBody) as ChartSpec | ScorecardSpec
       } catch {
-        chart = undefined
+        parsed = undefined
       }
-      segments.push({ type: 'chart', raw: fenceBody, chart })
+      if (fenceType === 'chart') {
+        segments.push({ type: 'chart', raw: fenceBody, chart: parsed as ChartSpec | undefined })
+      } else {
+        segments.push({ type: 'scorecard', raw: fenceBody, scorecard: parsed as ScorecardSpec | undefined })
+      }
     } else if (fenceType === 'mermaid') {
       segments.push({ type: 'mermaid', content: fenceBody })
     }
@@ -319,6 +406,89 @@ function MermaidCard({ content }: { content: string }) {
         </div>
       )}
       <pre className="mermaid-code"><code>{content}</code></pre>
+    </div>
+  )
+}
+
+function ScorecardBlock({ scorecard, raw }: { scorecard?: ScorecardSpec; raw: string }) {
+  const metrics = Array.isArray(scorecard?.metrics) ? scorecard?.metrics : []
+  const strengths = Array.isArray(scorecard?.strengths) ? scorecard?.strengths : []
+  const gaps = Array.isArray(scorecard?.gaps) ? scorecard?.gaps : []
+  const score = typeof scorecard?.score === 'number' ? scorecard.score : null
+  const maxScore = typeof scorecard?.maxScore === 'number' && scorecard.maxScore > 0 ? scorecard.maxScore : 100
+
+  if (!scorecard || score === null) {
+    return (
+      <div className="structured-card scorecard-block">
+        <div className="structured-card-header">
+          <span className="structured-pill"><BarChart3 size={13} /> Scorecard Spec</span>
+        </div>
+        <pre><code>{raw}</code></pre>
+      </div>
+    )
+  }
+
+  return (
+    <div className="structured-card scorecard-block">
+      <div className="scorecard-shell">
+        <div className="scorecard-topline" />
+        <div className="scorecard-header">
+          <div className="scorecard-copy">
+            <span className="section-kicker">{scorecard.title || 'Assessment'}</span>
+            <p>{scorecard.summary || 'Structured evaluation generated in visual mode.'}</p>
+          </div>
+        </div>
+        <div className="scorecard-hero">
+          <div className="scorecard-total">
+            <span className="scorecard-total-value">{score}</span>
+            <span className="scorecard-total-max">/{maxScore}</span>
+          </div>
+          <div className="scorecard-verdict">
+            <strong>{scorecard.verdict || 'Assessment'}</strong>
+          </div>
+        </div>
+
+        {metrics.length > 0 && (
+          <div className="scorecard-metrics">
+            {metrics.map(metric => {
+              const safeValue = Math.max(0, Math.min(metric.value, maxScore))
+              return (
+                <div key={metric.label} className="scorecard-metric-row">
+                  <div className="scorecard-metric-head">
+                    <span>{metric.label}</span>
+                    <span>{safeValue}</span>
+                  </div>
+                  <div className="scorecard-metric-track">
+                    <div
+                      className={`scorecard-metric-fill ${metric.tone || 'good'}`}
+                      style={{ width: `${(safeValue / maxScore) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <div className="scorecard-columns">
+          {strengths.length > 0 && (
+            <div className="scorecard-section">
+              <h4>What&apos;s Working</h4>
+              <ul>
+                {strengths.map(item => <li key={item}>{item}</li>)}
+              </ul>
+            </div>
+          )}
+          {gaps.length > 0 && (
+            <div className="scorecard-section">
+              <h4>Critical Gaps</h4>
+              <ul className="critical">
+                {gaps.map(item => <li key={item}>{item}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -453,24 +623,7 @@ function ChartCard({ chart, raw }: { chart?: ChartSpec; raw: string }) {
                       rx="6"
                       fill={`url(#chartGrad${seriesIndex})`}
                       style={{ filter: `drop-shadow(0 4px 8px ${item.color || CHART_COLORS[seriesIndex % CHART_COLORS.length]}30)` }}
-                    >
-                      <animate
-                        attributeName="height"
-                        from="0"
-                        to={barHeight}
-                        dur="0.6s"
-                        fill="freeze"
-                        begin="0s"
-                      />
-                      <animate
-                        attributeName="y"
-                        from={padding.top + chartHeight}
-                        to={y}
-                        dur="0.6s"
-                        fill="freeze"
-                        begin="0s"
-                      />
-                    </rect>
+                    />
                   )
                 })}
               </g>
@@ -520,6 +673,9 @@ function StructuredContent({ content }: { content: string }) {
         }
         if (segment.type === 'chart') {
           return <ChartCard key={`chart-${index}`} chart={segment.chart} raw={segment.raw} />
+        }
+        if (segment.type === 'scorecard') {
+          return <ScorecardBlock key={`scorecard-${index}`} scorecard={segment.scorecard} raw={segment.raw} />
         }
         return <MermaidCard key={`mermaid-${index}`} content={segment.content} />
       })}
@@ -582,39 +738,34 @@ function ThinkingPanel({
   researchLevel: string
   live: boolean
 }) {
+  const visibleLogs = logs.slice(-2)
   return (
-    <details className="thinking-panel" open={live || logs.length <= 3}>
-      <summary>
-        <div className="thinking-summary">
-          <span className="structured-pill"><Activity size={13} /> Orchestration Log</span>
-          <span>{logs.length} events</span>
-          <span className="thinking-level">{researchLevel} depth</span>
-        </div>
-      </summary>
+    <div className="thinking-panel">
+      <div className="thinking-summary">
+        <span className="structured-pill"><Activity size={13} /> Flow</span>
+        <span>{logs.length} steps</span>
+        <span className="thinking-level">{researchLevel}</span>
+      </div>
       {plan.trim() && (
         <div className="thinking-plan">
-          <div className="thinking-plan-title">Research Plan</div>
-          <Md>{plan}</Md>
+          <div className="thinking-plan-title">Plan</div>
+          <p>{plan.split('\n').map(line => line.trim()).filter(Boolean).slice(0, 2).join(' ')}</p>
         </div>
       )}
-      <div className="thinking-log-list">
-        {logs.map((log, index) => (
+      <div className="thinking-log-list" aria-live={live ? 'polite' : undefined}>
+        {visibleLogs.map((log, index) => (
           <div key={`${log.node}-${index}`} className="thinking-log-item">
-            <div className="thinking-log-head">
-              <strong>{log.title}</strong>
-              <span>{log.node}</span>
-            </div>
-            <p>{log.detail}</p>
-            <div className="thinking-log-meta">
-              {log.provider && <span>{log.provider}</span>}
-              {log.reranker && <span>{log.reranker}</span>}
-              {typeof log.result_count === 'number' && <span>{log.result_count} results</span>}
-              {log.model && <span>{log.model}</span>}
-            </div>
+            <strong>{log.title}</strong>
+            <span>{log.detail}</span>
           </div>
         ))}
+        {logs.length > visibleLogs.length && (
+          <div className="thinking-log-more">
+            Latest {visibleLogs.length} of {logs.length}
+          </div>
+        )}
       </div>
-    </details>
+    </div>
   )
 }
 
@@ -625,6 +776,7 @@ function ThinkingPanel({
 export default function App() {
   const [models, setModels] = useState<ModelEntry[]>([])
   const [selectedModel, setSelectedModel] = useState('groq/llama-3.3-70b-versatile')
+  const [singleModelMode, setSingleModelMode] = useState(false)
   const [mode, setMode] = useState<'standard' | 'research' | 'reasoning'>('standard')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('history')
@@ -639,9 +791,12 @@ export default function App() {
   const [planPreview, setPlanPreview] = useState('')
   const [researchLevel, setResearchLevel] = useState('basic')
   const [temperature, setTemperature] = useState(0.1)
+  const [uiError, setUiError] = useState('')
   const [apiKeys, setApiKeys] = useState({ groq: '', sarvam: '', openrouter: '' })
   const [firecrawlConfig, setFirecrawlConfig] = useState<FirecrawlSettings>(DEFAULT_FIRECRAWL)
   const [uiPrefs, setUiPrefs] = useState<UiSettings>(DEFAULT_UI)
+  const [agentRuntime, setAgentRuntime] = useState<AgentRuntimeSettings>(DEFAULT_AGENT_RUNTIME)
+  const [visualMode, setVisualMode] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const dataCursorRef = useRef(0)
 
@@ -666,21 +821,23 @@ export default function App() {
     append,
   } = useChat({
     api: '/api/chat',
-    body: { model: selectedModel, mode, temperature },
+    body: { model: selectedModel, mode, temperature, visualsEnabled: visualMode },
     onFinish: () => {
       setStatusText('')
+      setUiError('')
       refreshSidebar()
     },
     onError: (error: Error) => {
       setStatusText('')
+      setUiError(error.message || 'The request failed. Verify the backend and provider settings.')
       console.error('Chat error:', error)
     },
   })
 
   const refreshSidebar = useCallback(() => {
-    api.threads().then((result: { threads?: ThreadItem[] }) => setThreads(result.threads || [])).catch(() => {})
-    api.artifacts().then((result: { artifacts?: ArtifactItem[] }) => setArtifacts(result.artifacts || [])).catch(() => {})
-    api.research().then((result: { sessions?: ResearchItem[] }) => setResearchSessions(result.sessions || [])).catch(() => {})
+    api.threads().then(result => setThreads(result.threads || [])).catch(() => {})
+    api.artifacts().then(result => setArtifacts(result.artifacts || [])).catch(() => {})
+    api.research().then(result => setResearchSessions(result.sessions || [])).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -707,13 +864,17 @@ export default function App() {
   }, [messages, isLoading, statusText, thinkingLog])
 
   useEffect(() => {
-    api.models().then((result: { models?: Record<string, string> }) => {
-      const entries = Object.entries(result.models || {}).map(([id, label]) => ({ id, label }))
-      setModels(entries)
-      if (entries.length > 0) setSelectedModel(current =>
-        entries.some(entry => entry.id === current) ? current : entries[0].id
+    api.models().then(result => {
+      const normalized = normalizeModelsResponse(result)
+      setModels(normalized.models)
+      setSingleModelMode(normalized.singleModelMode)
+      if (normalized.models.length > 0) setSelectedModel(current =>
+        normalized.models.some(entry => entry.id === current) ? current : (normalized.defaultModel || normalized.models[0].id)
       )
-    }).catch(() => {})
+      setUiError('')
+    }).catch(() => {
+      setUiError('Failed to load models from the backend. Verify the API server and provider settings.')
+    })
 
     api.settings().then((settings: AppSettings) => {
       setTemperature(typeof settings.temperature === 'number' ? settings.temperature : 0.1)
@@ -730,12 +891,20 @@ export default function App() {
         ...DEFAULT_UI,
         ...(settings.ui || {}),
       })
-    }).catch(() => {})
+      setAgentRuntime({
+        ...DEFAULT_AGENT_RUNTIME,
+        ...(settings.agentRuntime || {}),
+      })
+      setVisualMode(Boolean(settings.ui?.renderVisualsInline ?? DEFAULT_UI.renderVisualsInline))
+    }).catch(() => {
+      setUiError('Failed to load runtime settings. Verify the backend is running on port 8002.')
+    })
 
     refreshSidebar()
   }, [refreshSidebar])
 
   const onNewChat = () => {
+    setUiError('')
     if (messages.length >= 2) {
       const title = messages.find((message: { role: string }) => message.role === 'user')?.content.slice(0, 60) || 'Chat'
       api.saveThread(
@@ -759,8 +928,9 @@ export default function App() {
         content: message.content,
       })) || [])
       resetTransientState()
-    } catch {
-      // ignore
+      setUiError('')
+    } catch (error) {
+      setUiError(error instanceof Error ? error.message : 'Failed to load the selected thread.')
     }
   }
 
@@ -768,8 +938,9 @@ export default function App() {
     try {
       const artifact = await api.artifact(id)
       setArtifactPanel({ title: artifact.title, content: artifact.content })
-    } catch {
-      // ignore
+      setUiError('')
+    } catch (error) {
+      setUiError(error instanceof Error ? error.message : 'Failed to load the selected artifact.')
     }
   }
 
@@ -777,13 +948,15 @@ export default function App() {
     try {
       const research = await api.researchItem(id)
       setArtifactPanel({ title: `Research: ${research.query?.slice(0, 40)}`, content: research.brief || '' })
-    } catch {
-      // ignore
+      setUiError('')
+    } catch (error) {
+      setUiError(error instanceof Error ? error.message : 'Failed to load the selected research session.')
     }
   }
 
   const quickPrompt = (text: string) => {
     resetTransientState()
+    setUiError('')
     append({ role: 'user', content: text })
   }
 
@@ -791,6 +964,7 @@ export default function App() {
     event.preventDefault()
     if (!input.trim() || isLoading) return
     resetTransientState()
+    setUiError('')
     handleSubmit(event)
   }
 
@@ -807,18 +981,37 @@ export default function App() {
       apiKeys,
       firecrawl: firecrawlConfig,
       ui: uiPrefs,
+      agentRuntime,
       search: { provider: 'duckduckgo', reranker: 'ReLU' },
-    }).then(() => setSettingsOpen(false)).catch(() => setSettingsOpen(false))
+    }).then(() => {
+      return Promise.all([api.settings(), api.models()])
+    }).then(([settings, modelsResponse]) => {
+      const normalized = normalizeModelsResponse(modelsResponse)
+      setModels(normalized.models)
+      setSingleModelMode(normalized.singleModelMode)
+      if (normalized.defaultModel) {
+        setSelectedModel(current =>
+          normalized.models.some(entry => entry.id === current) ? current : normalized.defaultModel || current
+        )
+      }
+      setAgentRuntime({
+        ...DEFAULT_AGENT_RUNTIME,
+        ...(settings.agentRuntime || {}),
+      })
+      setUiError('')
+      setSettingsOpen(false)
+    }).catch((error) => {
+      setUiError(error instanceof Error ? error.message : 'Failed to save runtime settings.')
+      setSettingsOpen(false)
+    })
   }
 
-  const modelLabel = models.find(model => model.id === selectedModel)?.label || selectedModel
+  const selectedModelEntry = models.find(model => model.id === selectedModel) || null
+  const modelLabel = selectedModelEntry?.label || selectedModel
   const lastAssistantId = [...messages].reverse().find(message => message.role === 'assistant')?.id
 
   return (
     <div className="app-shell">
-      <div className="ambient ambient-a" />
-      <div className="ambient ambient-b" />
-
       <div className="app">
         {/* ── SIDEBAR ─────────────────────────────────────────────── */}
         <aside className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
@@ -890,20 +1083,26 @@ export default function App() {
             <button className="toggle-sidebar-btn" onClick={() => setSidebarOpen(open => !open)}>
               {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
             </button>
-            <span className="topbar-label">Model</span>
-            <select className="topbar-select" value={selectedModel} onChange={event => setSelectedModel(event.target.value)}>
-              {models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
-            </select>
-            <span className="topbar-label">Mode</span>
-            <select className="topbar-select" value={mode} onChange={event => setMode(event.target.value as typeof mode)}>
-              <option value="standard">⚡ Standard</option>
-              <option value="research">🔬 Research</option>
-              <option value="reasoning">🧠 Reasoning</option>
-            </select>
-            <div className="topbar-pills">
-              <span className="signal-pill"><Search size={12} /> DuckDuckGo</span>
-              <span className="signal-pill"><Sparkles size={12} /> ReLU</span>
-              <span className="signal-pill"><Compass size={12} /> Firecrawl</span>
+            <div className="topbar-control">
+              <span className="topbar-label">Model</span>
+              {singleModelMode ? (
+                <div className="topbar-single-model">
+                  <Brain size={14} />
+                  <span>{modelLabel}</span>
+                </div>
+              ) : (
+                <select className="topbar-select" value={selectedModel} onChange={event => setSelectedModel(event.target.value)}>
+                  {models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
+                </select>
+              )}
+            </div>
+            <div className="topbar-control">
+              <span className="topbar-label">Mode</span>
+              <select className="topbar-select" value={mode} onChange={event => setMode(event.target.value as typeof mode)}>
+                <option value="standard">⚡ Standard</option>
+                <option value="research">🔬 Research</option>
+                <option value="reasoning">🧠 Reasoning</option>
+              </select>
             </div>
             <div className="topbar-spacer" />
             <button className="settings-btn" onClick={() => setSettingsOpen(true)}>
@@ -911,29 +1110,51 @@ export default function App() {
             </button>
           </div>
 
+          {selectedModelEntry && (
+            <div className="model-spotlight">
+              <div className="model-spotlight-copy">
+                <strong>{selectedModelEntry.label}</strong>
+                <span>{selectedModelEntry.specialty}</span>
+                <span>{visualMode ? 'Visual responses enabled' : 'Text-first responses'}</span>
+              </div>
+              <div className="model-spotlight-meta">
+                <span className="model-meta-pill"><Brain size={12} /> {selectedModelEntry.provider}</span>
+                {selectedModelEntry.features.slice(0, 2).map(feature => (
+                  <span key={feature} className="model-feature-pill">{feature}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {uiError && (
+            <div className="error-banner" role="alert">
+              <Shield size={14} />
+              <span>{uiError}</span>
+            </div>
+          )}
+
           {/* ── Messages Stream ───────────────────────────────────── */}
           <div className="messages">
             <div className="messages-inner">
               {messages.length === 0 && !isLoading && (
                 <div className="welcome">
-                  <div className="welcome-badge">Research-first · Visual · Structured · Made in India 🇮🇳</div>
-                  <h1>RAY God Mode</h1>
+                  <div className="welcome-badge">Minimal chat workspace</div>
+                  <h1>RAY</h1>
                   <p>
-                    Self-hosted Firecrawl for deep crawling, DuckDuckGo for fast search,
-                    ReLU reranking for precision evidence, and vibrant visual rendering — all inside chat.
+                    Ask a question, keep the response text-first by default, and enable visuals only for answers that benefit from charts, diagrams, or formatted briefs.
                   </p>
                   <div className="welcome-cards">
-                    <div className="welcome-card" onClick={() => quickPrompt('Compare top reasoning models and include a leaderboard chart')}>
-                      <div className="wc-title"><BarChart3 size={14} /> Visual Research</div>
-                      <div className="wc-desc">Leaderboard with live chart rendering</div>
+                    <div className="welcome-card" onClick={() => quickPrompt('Compare top reasoning models in plain markdown')}>
+                      <div className="wc-title"><MessageSquare size={14} /> Plain answer</div>
+                      <div className="wc-desc">Default text-first response</div>
                     </div>
-                    <div className="welcome-card" onClick={() => quickPrompt('Research self-hosted Firecrawl vs cloud and summarize as a document')}>
-                      <div className="wc-title"><FlaskConical size={14} /> Deep Research</div>
-                      <div className="wc-desc">Document-style research brief</div>
+                    <div className="welcome-card" onClick={() => { setVisualMode(true); quickPrompt('Compare top reasoning models and include a leaderboard chart') }}>
+                      <div className="wc-title"><BarChart3 size={14} /> Visual answer</div>
+                      <div className="wc-desc">Turn visuals on for charts and diagrams</div>
                     </div>
-                    <div className="welcome-card" onClick={() => quickPrompt('Design an AI research pipeline and include a mermaid diagram')}>
-                      <div className="wc-title"><Workflow size={14} /> Architecture</div>
-                      <div className="wc-desc">Diagrams plus execution canvas</div>
+                    <div className="welcome-card" onClick={() => quickPrompt('Research self-hosted Firecrawl vs cloud and summarize the trade-offs')}>
+                      <div className="wc-title"><FlaskConical size={14} /> Research</div>
+                      <div className="wc-desc">Web-assisted answer when needed</div>
                     </div>
                   </div>
                 </div>
@@ -950,13 +1171,11 @@ export default function App() {
                   <div className={`message-body ${message.role === 'user' ? 'user-body' : 'assistant-body'}`}>
                     <StructuredContent content={message.content} />
 
-                    {/* Inline Score Cards after the last assistant message */}
                     {message.role === 'assistant' && message.id === lastAssistantId && (evidence.length > 0 || thinkingLog.length > 0) && (
-                      <RuntimeScoreStrip
+                      <ResponseMetaRow
                         evidence={evidence}
                         thinkingLog={thinkingLog}
                         mode={mode}
-                        model={modelLabel}
                       />
                     )}
 
@@ -990,9 +1209,6 @@ export default function App() {
                           <div className="chakra-spinner" />
                           <div className="thinking-status">{statusText || `Analyzing with ${modelLabel}…`}</div>
                         </div>
-                        <div className="thinking-bar">
-                          <div className="thinking-bar-fill" />
-                        </div>
                       </div>
                       {uiPrefs.showThinkingLogs && thinkingLog.length > 0 && (
                         <div className="thinking-inline-log">
@@ -1012,6 +1228,21 @@ export default function App() {
           {/* ── Input Area ─────────────────────────────────────────── */}
           <div className="input-area">
             <div className="input-area-inner">
+              <div className="composer-toolbar">
+                <button
+                  type="button"
+                  className={`composer-toggle ${visualMode ? 'active' : ''}`}
+                  onClick={() => setVisualMode(current => !current)}
+                >
+                  <BarChart3 size={14} />
+                  {visualMode ? 'Visuals On' : 'Visuals Off'}
+                </button>
+                <span className="composer-toolbar-note">
+                  {visualMode
+                    ? 'Visual blocks appear only when the response actually benefits from them.'
+                    : 'Responses stay in plain markdown unless you explicitly enable visuals.'}
+                </span>
+              </div>
               <form onSubmit={onSubmit}>
                 <div className="input-box">
                   <textarea
@@ -1034,7 +1265,7 @@ export default function App() {
                 </div>
               </form>
               <div className="input-hint">
-                RAY · {modelLabel} · {mode} mode · DuckDuckGo + Firecrawl + ReLU reranker
+                {modelLabel} · {mode} mode · {visualMode ? 'visuals available on demand' : 'plain text output'}
               </div>
             </div>
           </div>
@@ -1110,6 +1341,104 @@ export default function App() {
                   </div>
 
                   <div className="form-group">
+                    <label className="form-label">Agent Runtime</label>
+                    <select
+                      className="form-select"
+                      value={agentRuntime.backend}
+                      onChange={event => setAgentRuntime(current => ({ ...current, backend: event.target.value }))}
+                    >
+                      <option value="langgraph">Built-in LangGraph backend</option>
+                      <option value="codex_cli">Codex CLI via Groq</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Codex CLI Path</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={agentRuntime.codexPath}
+                      onChange={event => setAgentRuntime(current => ({ ...current, codexPath: event.target.value }))}
+                      placeholder="codex"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Codex Model</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={agentRuntime.codexModel}
+                      onChange={event => setAgentRuntime(current => ({ ...current, codexModel: event.target.value }))}
+                      placeholder="openai/gpt-oss-20b"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Codex Provider ID</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={agentRuntime.codexProviderId}
+                      onChange={event => setAgentRuntime(current => ({ ...current, codexProviderId: event.target.value }))}
+                      placeholder="groq"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Groq OpenAI Base URL</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={agentRuntime.codexBaseUrl}
+                      onChange={event => setAgentRuntime(current => ({ ...current, codexBaseUrl: event.target.value }))}
+                      placeholder="https://api.groq.com/openai/v1"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Codex Sandbox</label>
+                    <select
+                      className="form-select"
+                      value={agentRuntime.codexSandbox}
+                      onChange={event => setAgentRuntime(current => ({ ...current, codexSandbox: event.target.value }))}
+                    >
+                      <option value="read-only">read-only</option>
+                      <option value="workspace-write">workspace-write</option>
+                      <option value="danger-full-access">danger-full-access</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Codex Approval Policy</label>
+                    <select
+                      className="form-select"
+                      value={agentRuntime.codexApprovalPolicy}
+                      onChange={event => setAgentRuntime(current => ({ ...current, codexApprovalPolicy: event.target.value }))}
+                    >
+                      <option value="never">never</option>
+                      <option value="on-request">on-request</option>
+                      <option value="untrusted">untrusted</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Visual Rendering by Default</label>
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={uiPrefs.renderVisualsInline}
+                        onChange={event => {
+                          const checked = event.target.checked
+                          setUiPrefs(current => ({ ...current, renderVisualsInline: checked }))
+                          setVisualMode(checked)
+                        }}
+                      />
+                      <span>Start chats with visual responses enabled</span>
+                    </label>
+                  </div>
+
+                  <div className="form-group">
                     <label className="form-label">Firecrawl Strategy</label>
                     <select
                       className="form-select"
@@ -1157,6 +1486,32 @@ export default function App() {
                 </div>
 
                 <div className="settings-note">
+                  <div className="section-kicker">Model Access</div>
+                  <p>
+                    The app works with a single configured model, and it automatically exposes model selection when
+                    more providers are available. Add one API key to start, or add multiple providers to unlock
+                    a richer model picker with specialties for chat, reasoning, coding, and research.
+                  </p>
+                </div>
+
+                <div className="settings-note" style={{ marginTop: 12 }}>
+                  <div className="section-kicker">Codex via Groq</div>
+                  <p>
+                    Switch the runtime to <code>Codex CLI via Groq</code> when you want the chat UI to act as a visual shell
+                    around the local Codex agent. The Groq API key is reused, and Codex is configured against the
+                    OpenAI-compatible Groq endpoint at <code>https://api.groq.com/openai/v1</code>.
+                  </p>
+                </div>
+
+                <div className="settings-note" style={{ marginTop: 12 }}>
+                  <div className="section-kicker">Visual Mode</div>
+                  <p>
+                    Keep visual mode off for a simpler chat experience. Turn it on only when you want charts,
+                    diagrams, or structured document-style output inside the conversation.
+                  </p>
+                </div>
+
+                <div className="settings-note" style={{ marginTop: 12 }}>
                   <div className="section-kicker">Firecrawl Self-Host Setup</div>
                   <p>
                     Run <code>scripts/start_firecrawl_selfhost.sh</code> to clone and start Firecrawl locally via Docker Compose.

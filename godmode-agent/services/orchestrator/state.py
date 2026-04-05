@@ -22,6 +22,10 @@ class AgentState(TypedDict, total=False):
     session_summary: Optional[str]
     recent_messages: List[BaseMessage]
     turn_count: int
+    memory_context: Optional[str]
+    memory_hits: List[dict]
+    behavioral_memories: List[str]
+    memory_writes: List[dict]
 
     # ── Routing & Planning ───────────────────────────────────────────────── #
     intent: Optional[str]
@@ -29,6 +33,7 @@ class AgentState(TypedDict, total=False):
     rewritten_query: Optional[str]
     plan: Optional[str]
     temperature: Optional[float]
+    visuals_enabled: Optional[bool]
 
     # ── Evidence (merged via operator.add across parallel nodes) ──────────── #
     evidence: Annotated[List[dict], operator.add]

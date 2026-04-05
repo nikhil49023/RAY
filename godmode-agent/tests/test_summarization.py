@@ -36,8 +36,10 @@ def _parse_summary(text: str) -> dict:
     return result
 
 
-def _make_factual_messages(facts: list[str]):
+def _make_factual_messages(facts: list[str] | int):
     """Create alternating H/A messages that mention the given facts."""
+    if isinstance(facts, int):
+        facts = [f"fact-{i}" for i in range(facts)]
     msgs = []
     for i, fact in enumerate(facts):
         msgs.append(HumanMessage(content=f"Tell me about {fact}"))

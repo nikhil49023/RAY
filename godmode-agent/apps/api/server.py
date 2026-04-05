@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
 import queue
 import re
 import sys
@@ -16,13 +18,25 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+import unicodedata
+
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("ray.api")
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT_DIR / ".env")
@@ -37,9 +51,12 @@ from services.orchestrator.graph import graph
 from services.orchestrator.llm_factory import LLMFactory
 from services.orchestrator.runtime import (
     apply_runtime_settings,
+    get_agent_runtime_config,
     load_user_settings,
     save_user_settings,
 )
+from services.agent_backends.codex_cli import stream_codex_cli
+from services.memory.semantic_memory import retrieve_semantic_memory
 
 # ── Data dirs ─────────────────────────────────────────────────────────────── #
 DATA_DIR = ROOT_DIR / "data"
@@ -49,14 +66,28 @@ RESEARCH_DIR = DATA_DIR / "research"
 for d in [THREADS_DIR, ARTIFACTS_DIR, RESEARCH_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="RAY God Mode API")
+# ── CORS Configuration ───────────────────────────────────────────────────── #
+# Environment-based CORS configuration for security
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173").split(",")
+ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
+# Fallback to wildcard only in development mode
+if os.getenv("RAY_ENV", "development") == "development" and not ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS = ["*"]
+
+app = FastAPI(
+    title="RAY God Mode API",
+    description="Multi-model AI assistant with research and reasoning capabilities",
+    version="1.0.0",
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
+logger.info(f"CORS configured for origins: {ALLOWED_ORIGINS}")
 
 apply_runtime_settings(load_user_settings())
 
@@ -78,9 +109,86 @@ NODE_STATUS = {
     "composer": "Composing the final response…",
 }
 
+# Maximum limits for safety
+MAX_MESSAGE_LENGTH = 50000  # ~50KB per message
+MAX_MESSAGES = 100
+MAX_TITLE_LENGTH = 500
+MAX_CONTENT_LENGTH = 1000000  # ~1MB
+
+
+def _sanitize_id(resource_id: str, directory: Path) -> Path:
+    """Safely construct a file path, preventing path traversal attacks."""
+    # Normalize unicode and remove dangerous characters
+    normalized = unicodedata.normalize("NFKC", resource_id)
+    # Only allow alphanumeric, underscore, hyphen, and the timestamp format
+    safe_id = re.sub(r"[^a-zA-Z0-9_\-]", "", normalized)
+    if not safe_id or safe_id != resource_id.replace("-", "").replace("_", ""):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid resource ID format"
+        )
+    # Construct path and verify it's within the expected directory
+    filepath = directory / f"{safe_id}.json"
+    try:
+        filepath.resolve().relative_to(directory.resolve())
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid resource ID"
+        )
+    return filepath
+
+
+def _safe_json_load(filepath: Path) -> Optional[dict]:
+    """Safely load JSON with size limit and error handling."""
+    try:
+        if not filepath.exists():
+            return None
+        if filepath.stat().st_size > MAX_CONTENT_LENGTH:
+            logger.warning(f"File too large: {filepath}")
+            return None
+        content = filepath.read_text(encoding="utf-8")
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error in {filepath}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Error reading {filepath}: {e}")
+        return None
+
 
 def _js(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False)
+
+
+def _message_content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if text:
+                    parts.append(str(text))
+        return "\n".join(parts)
+    return str(content or "")
+
+
+def _to_langchain_messages(messages: List[dict]) -> List[HumanMessage | AIMessage]:
+    converted: List[HumanMessage | AIMessage] = []
+    for item in messages:
+        role = str(item.get("role", "")).lower()
+        content = _message_content_to_text(item.get("content", ""))
+        if not content.strip():
+            continue
+        if role == "assistant":
+            converted.append(AIMessage(content=content))
+        elif role == "user":
+            converted.append(HumanMessage(content=content))
+    return converted
 
 
 def _load_json_dir(directory: Path) -> List[dict]:
@@ -170,6 +278,99 @@ def _save_generated_artifact(block: dict) -> None:
     (ARTIFACTS_DIR / f"{aid}.json").write_text(_js(data), encoding="utf-8")
 
 
+def _codex_proxy_payload(raw: bytes) -> bytes:
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        return raw
+
+    payload.pop("web_search_options", None)
+    payload.pop("tools", None)
+    payload.pop("tool_choice", None)
+    payload.pop("parallel_tool_calls", None)
+    payload.pop("max_tool_calls", None)
+    payload.pop("include", None)
+    payload.pop("prompt_cache_key", None)
+    payload.pop("store", None)
+    reasoning = payload.get("reasoning")
+    if isinstance(reasoning, dict):
+        reasoning.pop("summary", None)
+        if not reasoning:
+            payload.pop("reasoning", None)
+
+    # Codex sends a very large built-in instruction block that pushes Groq's
+    # request size over the model TPM/request budget. Keep a concise system
+    # instruction and rely on the actual user input for the turn content.
+    instructions = payload.get("instructions")
+    if isinstance(instructions, str) and instructions.strip():
+        payload["instructions"] = (
+            "You are Codex running behind the RAY chat UI. "
+            "Answer the latest user request clearly and concisely."
+        )
+
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+def _runtime_model_entries(settings: Dict[str, Any]) -> List[dict]:
+    runtime = get_agent_runtime_config(settings)
+    if runtime.get("backend") != "codex_cli":
+        return LLMFactory.list_model_entries()
+
+    model_id = runtime.get("codex_model", "openai/gpt-oss-20b")
+    return [{
+        "id": model_id,
+        "label": f"Codex via Groq ({model_id})",
+        "provider": "Codex CLI",
+        "specialty": "CLI agent runtime",
+        "description": "Codex CLI running locally with Groq as its OpenAI-compatible model provider.",
+        "features": ["Tools", "CLI Agent", "Workspace", "Groq"],
+        "is_default": True,
+    }]
+
+
+def _resolve_chat_model(requested_model: str, runtime: Dict[str, Any]) -> str:
+    requested = str(requested_model or "").strip()
+    if runtime.get("backend") == "codex_cli":
+        configured = str(runtime.get("codex_model") or "").strip()
+        return configured or "openai/gpt-oss-20b"
+    return requested or "groq/llama-3.3-70b-versatile"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# REQUEST MODELS
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class MessageContent(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant|system)$")
+    content: str = Field(..., max_length=MAX_MESSAGE_LENGTH)
+
+    @field_validator("content")
+    @classmethod
+    def content_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Message content cannot be empty")
+        return v.strip()
+
+
+class ChatRequest(BaseModel):
+    messages: List[MessageContent] = Field(default_factory=list, max_length=MAX_MESSAGES)
+    model: str = Field(default="groq/llama-3.3-70b-versatile")
+    mode: str = Field(default="standard", pattern="^(standard|research|reasoning)$")
+    temperature: float = Field(default=0.1, ge=0.0, le=2.0)
+    visualsEnabled: bool = Field(default=False)
+
+
+class ThreadSave(BaseModel):
+    title: str = Field(default="Untitled", max_length=MAX_TITLE_LENGTH)
+    messages: List[dict] = Field(default_factory=list, max_length=MAX_MESSAGES)
+
+
+class ArtifactSave(BaseModel):
+    title: str = Field(..., max_length=MAX_TITLE_LENGTH)
+    content: str = Field(..., max_length=MAX_CONTENT_LENGTH)
+    type: str = Field(default="document", pattern="^(document|canvas|chart|mermaid)$")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CHAT  (Vercel AI SDK Data Stream Protocol)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -177,25 +378,53 @@ def _save_generated_artifact(block: dict) -> None:
 
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON in request body"
+        )
+
+    # Validate request
+    try:
+        chat_req = ChatRequest(**body)
+        messages = [{"role": m.role, "content": m.content} for m in chat_req.messages]
+        model = chat_req.model
+        mode = chat_req.mode
+        temperature = chat_req.temperature
+    except Exception as e:
+        logger.warning(f"Invalid chat request: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid request parameters: {str(e)}"
+        )
+
     settings = apply_runtime_settings(load_user_settings())
+    runtime = get_agent_runtime_config(settings)
+    model = _resolve_chat_model(model, runtime)
 
-    messages = body.get("messages", [])
-    model = body.get("model", "groq/llama-3.3-70b-versatile")
-    mode = body.get("mode", "standard")
-    temperature = float(body.get("temperature", settings.get("temperature", 0.1)))
-
+    conversation = _to_langchain_messages(messages if isinstance(messages, list) else [])
     user_msg = ""
     for m in reversed(messages):
         if m.get("role") == "user":
-            user_msg = m.get("content", "")
+            user_msg = _message_content_to_text(m.get("content", ""))
             break
     if not user_msg:
         user_msg = "Hello"
+    if not conversation:
+        conversation = [HumanMessage(content=user_msg)]
+
+    user_turns = sum(1 for msg in conversation if isinstance(msg, HumanMessage))
+    retrieved_memory = retrieve_semantic_memory(user_msg, top_k=10 if mode == "research" else 5)
 
     initial_state = {
-        "messages": [HumanMessage(content=user_msg)],
-        "turn_count": 0,
+        "messages": conversation,
+        "turn_count": max(user_turns - 1, 0),
+        "memory_context": retrieved_memory.get("memory_context", ""),
+        "memory_hits": retrieved_memory.get("memory_hits", []),
+        "behavioral_memories": retrieved_memory.get("behavioral_memories", []),
+        "memory_writes": [],
         "evidence": [],
         "artifacts": [],
         "thinking_log": [],
@@ -205,12 +434,47 @@ async def chat_endpoint(request: Request):
         "agent_mode": mode,
         "selected_model": model,
         "temperature": temperature,
+        "visuals_enabled": bool(body.get("visualsEnabled", settings.get("ui", {}).get("renderVisualsInline", False))),
     }
 
     async def generate():
         q: queue.Queue = queue.Queue()
+        request_id = uuid.uuid4().hex[:8]
+        backend = runtime.get("backend", "langgraph")
+        logger.info(f"[{request_id}] Starting chat request - backend={backend}, model={model}, mode={mode}")
 
         def worker():
+            if backend == "codex_cli":
+                try:
+                    for event in stream_codex_cli(
+                        messages=messages,
+                        runtime=runtime,
+                        mode=mode,
+                        visuals_enabled=bool(initial_state.get("visuals_enabled")),
+                        memory_context=str(initial_state.get("memory_context", "")),
+                        behavioral_memories=list(initial_state.get("behavioral_memories", [])),
+                        model=model,
+                        workdir=ROOT_DIR,
+                    ):
+                        event_type = event.get("event")
+                        if event_type == "status":
+                            q.put(("status", "codex_cli", event))
+                        elif event_type == "log":
+                            q.put(("log", "codex_cli", event))
+                        elif event_type == "error":
+                            q.put(("error", None, event.get("error", "Codex execution failed.")))
+                            return
+                        elif event_type == "done":
+                            q.put(("done", None, event))
+                            logger.info(f"[{request_id}] Codex CLI execution completed successfully")
+                            return
+
+                    q.put(("error", None, "Codex execution ended unexpectedly."))
+                except Exception as exc:
+                    logger.error(f"[{request_id}] Codex CLI execution error: {exc}")
+                    q.put(("error", None, str(exc)))
+                return
+
             try:
                 final_state: Dict[str, Any] = {}
                 for event in graph.stream(initial_state):
@@ -218,7 +482,9 @@ async def chat_endpoint(request: Request):
                         final_state.update(node_state)
                         q.put(("node", node_id, node_state))
                 q.put(("done", None, final_state))
+                logger.info(f"[{request_id}] Graph execution completed successfully")
             except Exception as exc:
+                logger.error(f"[{request_id}] Graph execution error: {exc}")
                 q.put(("error", None, str(exc)))
 
         thread = threading.Thread(target=worker, daemon=True)
@@ -241,16 +507,30 @@ async def chat_endpoint(request: Request):
                     items.append({"thinking_log_append": node_logs})
                 yield "2:" + _js(items) + "\n"
 
+            elif msg_type == "status":
+                status_text = str(payload.get("status", "Codex is working…"))
+                yield "2:" + _js([{"status": status_text, "node": node_id}]) + "\n"
+
+            elif msg_type == "log":
+                node_logs = payload.get("thinking_log", []) if isinstance(payload, dict) else []
+                if node_logs:
+                    yield "2:" + _js([{"thinking_log_append": node_logs}]) + "\n"
+
             elif msg_type == "error":
                 err = payload or "Unknown error"
                 hint = ""
                 low_err = err.lower()
+                logger.error(f"[{request_id}] Stream error: {err}")
+
+                # Provide actionable hints based on error type
                 if "401" in err or "403" in err or "invalid_api_key" in low_err:
-                    hint = "\n\nCheck your provider or Firecrawl key in Settings."
+                    hint = "\n\n**Solution:** Check your API key in Settings. Ensure the key is valid and has proper permissions."
                 elif "rate" in low_err or "429" in err:
-                    hint = "\n\nRate limit reached. Wait briefly or switch models."
-                elif "connection" in low_err or "refused" in low_err:
-                    hint = "\n\nConnection failed. Verify the selected provider and Firecrawl self-host endpoint."
+                    hint = "\n\n**Solution:** Rate limit reached. Wait 60 seconds or switch to a different model."
+                elif "connection" in low_err or "refused" in low_err or "timeout" in low_err:
+                    hint = "\n\n**Solution:** Connection failed. Check if the service is running:\n- For Ollama: `ollama serve`\n- For Firecrawl: verify the self-hosted endpoint"
+                elif "model" in low_err and ("not found" in low_err or "unavailable" in low_err):
+                    hint = "\n\n**Solution:** Model not available. Select a different model from the dropdown."
                 yield "0:" + _js("Error: " + err + hint) + "\n"
                 yield "e:" + _js({"finishReason": "error"}) + "\n"
                 yield "d:" + _js({"finishReason": "error"}) + "\n"
@@ -266,11 +546,14 @@ async def chat_endpoint(request: Request):
                             break
                 if not answer:
                     answer = "No response generated. Try a different model or rephrase your query."
+                    logger.warning(f"[{request_id}] Empty response generated")
 
                 evidence = final_state.get("evidence", [])
                 thinking_log = final_state.get("thinking_log", [])
                 render_blocks = _extract_render_blocks(answer)
                 research_brief = _primary_document_text(answer, render_blocks)
+
+                logger.info(f"[{request_id}] Response ready - evidence={len(evidence)}, blocks={len(render_blocks)}")
 
                 chunk_size = 50
                 for i in range(0, len(answer), chunk_size):
@@ -302,6 +585,9 @@ async def chat_endpoint(request: Request):
                         "plan": str(final_state.get("plan", ""))[:2000],
                         "research_level": final_state.get("research_level", "basic"),
                     })
+
+                if final_state.get("memory_hits"):
+                    annotations.append({"memory_hits": final_state.get("memory_hits", [])[:5]})
 
                 if annotations:
                     yield "2:" + _js(annotations) + "\n"
@@ -357,18 +643,90 @@ async def chat_endpoint(request: Request):
 
 @app.get("/api/models")
 async def list_models():
-    apply_runtime_settings(load_user_settings())
-    return {"models": LLMFactory.list_models()}
+    settings = apply_runtime_settings(load_user_settings())
+    models = _runtime_model_entries(settings)
+    return {
+        "models": models,
+        "defaultModel": next((item["id"] for item in models if item.get("is_default")), models[0]["id"] if models else None),
+        "singleModelMode": len(models) <= 1,
+    }
+
+
+@app.get("/api/codex-openai/v1/models")
+async def codex_proxy_models():
+    return {
+        "object": "list",
+        "data": [
+            {"id": "openai/gpt-oss-20b", "object": "model", "owned_by": "groq"},
+            {"id": "openai/gpt-oss-120b", "object": "model", "owned_by": "groq"},
+        ],
+    }
+
+
+@app.post("/api/codex-openai/v1/responses")
+async def codex_proxy_responses(request: Request):
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    if not groq_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GROQ_API_KEY is not configured on the server.",
+        )
+
+    body = await request.body()
+    try:
+        filtered_body = _codex_proxy_payload(body)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid responses payload: {exc}",
+        )
+
+    target_url = "https://api.groq.com/openai/v1/responses"
+    content_type = request.headers.get("content-type", "application/json")
+
+    async def generate():
+        timeout = httpx.Timeout(120.0, connect=30.0)
+        headers = {
+            "Authorization": f"Bearer {groq_key}",
+            "Content-Type": content_type,
+        }
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream("POST", target_url, headers=headers, content=filtered_body) as response:
+                if response.status_code >= 400:
+                    error_body = await response.aread()
+                    try:
+                        payload_preview = json.loads(filtered_body.decode("utf-8"))
+                    except Exception:
+                        payload_preview = {"raw": filtered_body.decode("utf-8", errors="replace")[:2000]}
+                    if isinstance(payload_preview, dict):
+                        preview = dict(payload_preview)
+                        instructions = preview.get("instructions")
+                        if isinstance(instructions, str):
+                            preview["instructions"] = instructions[:240]
+                        preview["input"] = f"<{len(preview.get('input', []))} input items>"
+                        payload_preview = preview
+                    logger.error(
+                        "Codex proxy upstream error %s payload=%s response=%s",
+                        response.status_code,
+                        payload_preview,
+                        error_body.decode("utf-8", errors="replace")[:4000],
+                    )
+                    yield error_body
+                    return
+                async for chunk in response.aiter_bytes():
+                    if chunk:
+                        yield chunk
+
+    return StreamingResponse(
+        generate(),
+        media_type=request.headers.get("accept", "text/event-stream"),
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # THREADS
 # ══════════════════════════════════════════════════════════════════════════════
-
-
-class ThreadSave(BaseModel):
-    title: str = "Untitled"
-    messages: List[dict] = []
 
 
 @app.get("/api/threads")
@@ -389,40 +747,46 @@ async def save_thread(body: ThreadSave):
     tid = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
     data = {
         "id": tid,
-        "title": body.title,
-        "messages": body.messages,
+        "title": body.title[:MAX_TITLE_LENGTH],
+        "messages": body.messages[:MAX_MESSAGES],
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    (THREADS_DIR / f"{tid}.json").write_text(_js(data), encoding="utf-8")
+    filepath = THREADS_DIR / f"{tid}.json"
+    filepath.write_text(_js(data), encoding="utf-8")
+    logger.info(f"Saved thread: {tid}")
     return {"id": tid}
 
 
 @app.get("/api/threads/{tid}")
 async def get_thread(tid: str):
-    f = THREADS_DIR / f"{tid}.json"
-    if not f.exists():
-        raise HTTPException(404)
-    return json.loads(f.read_text(encoding="utf-8"))
+    try:
+        filepath = _sanitize_id(tid, THREADS_DIR)
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found")
+
+    data = _safe_json_load(filepath)
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found")
+    return data
 
 
 @app.delete("/api/threads/{tid}")
 async def delete_thread(tid: str):
-    f = THREADS_DIR / f"{tid}.json"
-    if f.exists():
-        f.unlink()
+    try:
+        filepath = _sanitize_id(tid, THREADS_DIR)
+    except HTTPException:
+        return {"ok": True}  # Idempotent delete
+
+    if filepath.exists():
+        filepath.unlink()
+        logger.info(f"Deleted thread: {tid}")
     return {"ok": True}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ARTIFACTS
 # ══════════════════════════════════════════════════════════════════════════════
-
-
-class ArtifactSave(BaseModel):
-    title: str
-    content: str
-    type: str = "document"
 
 
 @app.get("/api/artifacts")
@@ -444,21 +808,28 @@ async def save_artifact(body: ArtifactSave):
     aid = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
     data = {
         "id": aid,
-        "title": body.title,
-        "content": body.content,
+        "title": body.title[:MAX_TITLE_LENGTH],
+        "content": body.content[:MAX_CONTENT_LENGTH],
         "type": body.type,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    (ARTIFACTS_DIR / f"{aid}.json").write_text(_js(data), encoding="utf-8")
+    filepath = ARTIFACTS_DIR / f"{aid}.json"
+    filepath.write_text(_js(data), encoding="utf-8")
+    logger.info(f"Saved artifact: {aid}")
     return {"id": aid}
 
 
 @app.get("/api/artifacts/{aid}")
 async def get_artifact(aid: str):
-    f = ARTIFACTS_DIR / f"{aid}.json"
-    if not f.exists():
-        raise HTTPException(404)
-    return json.loads(f.read_text(encoding="utf-8"))
+    try:
+        filepath = _sanitize_id(aid, ARTIFACTS_DIR)
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
+
+    data = _safe_json_load(filepath)
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
+    return data
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -482,10 +853,15 @@ async def list_research():
 
 @app.get("/api/research/{rid}")
 async def get_research(rid: str):
-    f = RESEARCH_DIR / f"{rid}.json"
-    if not f.exists():
-        raise HTTPException(404)
-    return json.loads(f.read_text(encoding="utf-8"))
+    try:
+        filepath = _sanitize_id(rid, RESEARCH_DIR)
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Research session not found")
+
+    data = _safe_json_load(filepath)
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Research session not found")
+    return data
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -500,7 +876,25 @@ async def get_settings():
 
 @app.post("/api/settings")
 async def save_settings(request: Request):
-    data = await request.json()
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON in request body"
+        )
+
+    # Validate settings structure
+    if not isinstance(data, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Settings must be an object"
+        )
+
+    # Sanitize sensitive data in logs
+    safe_data = {k: v for k, v in data.items() if k not in ("apiKeys",)}
+    logger.info(f"Updating settings: {safe_data}")
+
     settings = save_user_settings(data)
     apply_runtime_settings(settings)
     return {"ok": True, "settings": settings}

@@ -1,39 +1,25 @@
 from services.orchestrator.state import AgentState
-from services.memory.ollama_embedder import embedder
-from services.memory.stores.qdrant_index import QdrantIndex
-
-# Initialize the behavior index store
-behavior_index = QdrantIndex(collection_name="behavior_index")
+from services.memory.semantic_memory import retrieve_semantic_memory
 
 def memory_prefetch(state: AgentState) -> dict:
     """
-    Retrieves behavioral rules and user preferences from Qdrant.
-    Directly calls Ollama for embeddings to respect VRAM constraints.
+    Retrieve semantic memory and behavioral preferences before planning.
     """
+    if state.get("memory_context") or state.get("behavioral_memories"):
+        return {
+            "memory_context": state.get("memory_context", ""),
+            "memory_hits": state.get("memory_hits", []),
+            "behavioral_memories": state.get("behavioral_memories", []),
+            "current_task": "Memory context already available",
+        }
+
     user_input = state["messages"][-1].content
-    
-    # Generate embedding for the query
-    try:
-        query_vector = embedder.embed_query(user_input)
-        
-        # Search for behavioral rules
-        hits = behavior_index.search(vector=query_vector, limit=5)
-        
-        # Extract rules from payloads
-        behavioral_memories = [hit.get("rule") for hit in hits if "rule" in hit]
-        
-    except Exception as e:
-        print(f"Memory prefetch warning: {e}")
-        behavioral_memories = []
-    
-    # Fallback/Default rules if none found
-    if not behavioral_memories:
-        behavioral_memories = [
-            "Rule: Prefer concise, high-confidence explanations.",
-            "Rule: Always cite sources from doc_rag or web_rag."
-        ]
-    
+    top_k = 10 if state.get("agent_mode") == "research" else 5
+    retrieved = retrieve_semantic_memory(str(user_input), top_k=top_k)
+
     return {
-        "behavioral_memories": behavioral_memories,
-        "current_task": "Behavioral Memory Prefetched (Qdrant)"
+        "behavioral_memories": retrieved.get("behavioral_memories", []),
+        "memory_hits": retrieved.get("memory_hits", []),
+        "memory_context": retrieved.get("memory_context", ""),
+        "current_task": "Semantic memory prefetched",
     }

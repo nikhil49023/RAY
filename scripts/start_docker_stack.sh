@@ -6,7 +6,7 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-docker compose up -d
+docker compose up -d litellm chromadb qdrant
 
 echo "LiteLLM:   http://localhost:4000"
 echo "ChromaDB:  http://localhost:8000"

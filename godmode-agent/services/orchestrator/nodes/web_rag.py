@@ -5,6 +5,8 @@ Lightweight web search for basic research.
 Skips if research_level is 'none'.
 """
 
+import logging
+
 from services.orchestrator.state import AgentState
 from services.orchestrator.relevance import rerank_with_relu
 
@@ -13,14 +15,20 @@ try:
 except ImportError:
     from duckduckgo_search import DDGS  # type: ignore
 
+# Configure logging
+logger = logging.getLogger("ray.web_rag")
+
 
 def web_rag(state: AgentState) -> dict:
     query = state.get("rewritten_query") or state["messages"][-1].content
     research_level = state.get("research_level", "basic")
 
+    logger.debug(f"Web RAG invoked - research_level={research_level}, query={query[:50]}...")
+
     if research_level == "none":
+        logger.debug("Skipping web search - reasoning mode")
         return {
-            "evidence": [],  # Always return evidence key to avoid merge error
+            "evidence": [],
             "current_task": "Web search skipped (reasoning mode)",
             "thinking_log": [{
                 "node": "web_rag",
@@ -33,7 +41,38 @@ def web_rag(state: AgentState) -> dict:
     evidence = []
     try:
         max_results = 5 if research_level == "deep" else 3
-        raw_results = list(DDGS().text(query, max_results=max_results))
+        raw_results = []
+        logger.info(f"Searching DuckDuckGo for: {query[:100]}")
+
+        with DDGS() as ddgs:
+            for kwargs in (
+                {"max_results": max_results, "backend": "html"},
+                {"max_results": max_results},
+            ):
+                try:
+                    raw_results = list(ddgs.text(query, **kwargs))
+                except TypeError:
+                    raw_results = list(ddgs.text(query, max_results=max_results))
+                if raw_results:
+                    break
+
+        if not raw_results:
+            logger.info("DuckDuckGo returned no results")
+            return {
+                "evidence": [],
+                "current_task": "Web search returned no results",
+                "thinking_log": [{
+                    "node": "web_rag",
+                    "title": "DuckDuckGo returned no results",
+                    "detail": "DuckDuckGo completed but did not return any search results for this query.",
+                    "provider": "duckduckgo",
+                    "reranker": "ReLU",
+                    "result_count": 0,
+                }],
+            }
+
+        logger.info(f"DuckDuckGo returned {len(raw_results)} results")
+
         ranked_results = rerank_with_relu(
             query,
             raw_results,
@@ -55,10 +94,13 @@ def web_rag(state: AgentState) -> dict:
                 "provider": "duckduckgo",
                 "relu_score": relu_score,
             })
+
+        logger.info(f"Web RAG complete - {len(evidence)} evidence items collected")
+
     except Exception as e:
-        print(f"[web_rag] DuckDuckGo error: {e}")
+        logger.error(f"DuckDuckGo search error: {e}")
         return {
-            "evidence": evidence,
+            "evidence": [],
             "current_task": "Web search failed",
             "thinking_log": [{
                 "node": "web_rag",
