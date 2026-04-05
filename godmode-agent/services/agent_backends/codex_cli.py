@@ -61,6 +61,8 @@ def _history_to_prompt(
         + "Operate as a capable local coding and research agent.\n"
         f"Mode: {mode}\n"
         f"{mode_directives.get(mode, mode_directives['standard'])}\n"
+        + "When visual mode is enabled, emit only the supported structured formats and keep every JSON block strictly valid.\n"
+        + "If you are unsure a visual will validate, fall back to plain markdown instead of a broken visual block.\n"
         "Return only the assistant response intended for the end user.\n\n"
         "Conversation transcript follows. Respond to the latest user request in context.\n\n"
         f"{history_block}\n"

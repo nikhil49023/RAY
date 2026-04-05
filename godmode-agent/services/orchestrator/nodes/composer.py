@@ -13,6 +13,7 @@ from services.orchestrator.assistant_contract import build_assistant_contract
 from services.orchestrator.state import AgentState
 from services.orchestrator.llm_factory import LLMFactory
 from services.orchestrator.runtime import load_user_settings
+from services.orchestrator.visual_output import build_visual_output_guidance
 
 # Configure logging
 logger = logging.getLogger("ray.composer")
@@ -51,6 +52,8 @@ def composer(state: AgentState) -> dict:
     visuals_enabled = bool(state.get("visuals_enabled", ui_settings.get("renderVisualsInline", False)))
     memory_context = state.get("memory_context", "")
     behavioral_memories = state.get("behavioral_memories", [])
+    firecrawl_summary = state.get("firecrawl_summary", "")
+    scraped_data = state.get("scraped_data", [])
 
     logger.debug(f"Composing for intent={intent}, mode={agent_mode}, evidence_count={len(evidence)}")
 
@@ -68,39 +71,7 @@ def composer(state: AgentState) -> dict:
     else:
         evidence_block = "No external evidence was retrieved."
 
-    output_rules = """\
-5. For research mode, put the detailed research brief inside:
-   <document: Research Brief>
-   content here
-   </document>
-6. For long-form outputs (reports, essays, code >50 lines), wrap in:
-   <canvas: Document Title>
-   content here
-   </canvas>
-7. For charts or comparisons, use a ```chart code block with strict JSON:
-   {{
-     "type": "bar" or "line",
-     "title": "Short chart title",
-     "labels": ["label 1", "label 2"],
-     "series": [{{"label": "Series 1", "data": [1, 2]}}]
-   }}
-8. For assessments, audits, profile reviews, or score-based breakdowns, use a ```scorecard code block with strict JSON:
-   {{
-     "title": "Short title",
-     "score": 72,
-     "maxScore": 100,
-     "verdict": "Strong potential, needs depth",
-     "summary": "One-sentence assessment",
-     "metrics": [
-       {{"label": "Technical skills", "value": 80, "tone": "good"}},
-       {{"label": "Experience depth", "value": 40, "tone": "warning"}}
-     ],
-     "strengths": ["Point one", "Point two"],
-     "gaps": ["Gap one", "Gap two"]
-   }}
-9. Use ```mermaid code blocks for diagrams when they add clarity.""" if visuals_enabled else """\
-5. Return plain markdown only.
-6. Do not use <document>, <canvas>, ```chart, ```scorecard, or ```mermaid blocks unless visual mode is explicitly enabled."""
+    output_rules = build_visual_output_guidance(visuals_enabled=visuals_enabled)
 
     system_prompt = f"""{build_assistant_contract(
         visuals_enabled=visuals_enabled,
@@ -116,10 +87,11 @@ RULES:
 3. Cite external claims inline as [Source: Title — URL] whenever a URL is available.
 4. If evidence was used, end with a `## Sources` section that lists the unique source URLs.
 5. If no evidence is provided, rely on your training knowledge and say so.
-4. Never reveal hidden chain-of-thought. The UI will show system-generated execution logs separately.
+6. Never reveal hidden chain-of-thought. The UI will show system-generated execution logs separately.
 {output_rules}
-10. Use markdown formatting: headers, bold, lists, code blocks.
-11. Always be helpful, thorough, and accurate.
+7. Use markdown formatting: headers, bold, lists, code blocks.
+8. Keep visual blocks self-contained and syntactically valid.
+9. Always be helpful, thorough, and accurate.
 
 CONTEXT:
 Intent: {intent}
@@ -128,9 +100,14 @@ Plan: {plan[:500] if plan else 'None'}
 Preferred research output: {ui_settings.get("researchOutput", "document")}
 Visual mode enabled: {visuals_enabled}
 Retrieved memory available: {bool(memory_context)}
+Firecrawl scraped pages: {len(scraped_data)}
+Firecrawl synthesis available: {bool(firecrawl_summary)}
 
 EVIDENCE:
-{evidence_block}"""
+{evidence_block}
+
+FIRECRAWL SYNTHESIS:
+{firecrawl_summary[:4000] if firecrawl_summary else 'No Firecrawl scrape summary available.'}"""
 
     try:
         resp = llm.invoke([

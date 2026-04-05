@@ -31,7 +31,7 @@ if [[ "${1:-}" != "--standalone" ]]; then
   echo ""
 
   pushd "${ROOT_DIR}" >/dev/null
-  docker compose up -d firecrawl-api firecrawl-redis firecrawl-playwright
+  docker compose --profile firecrawl up -d
   popd >/dev/null
 
   echo ""

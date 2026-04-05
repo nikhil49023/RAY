@@ -11,8 +11,10 @@ import time
 from typing import Any, Dict, List, Tuple
 
 import requests
+from langchain_core.messages import HumanMessage, SystemMessage
 from requests.exceptions import RequestException, Timeout, ConnectionError
 
+from services.orchestrator.llm_factory import LLMFactory
 from services.orchestrator.state import AgentState
 from services.orchestrator.relevance import rerank_with_relu
 from services.orchestrator.runtime import get_firecrawl_config, load_user_settings
@@ -24,6 +26,10 @@ logger = logging.getLogger("ray.deep_research")
 MAX_RETRIES = 3
 RETRY_DELAYS = [1, 2, 4]  # Exponential backoff delays in seconds
 REQUEST_TIMEOUT = 30  # seconds
+MAX_SCRAPED_URLS = 4
+MAX_SCRAPE_CHARS = 3000
+MAX_SUMMARY_INPUT_CHARS = 12000
+FIRECRAWL_SUMMARY_MODEL = "groq/openai/gpt-oss-20b"
 
 
 def _extract_firecrawl_items(result) -> list:
@@ -32,6 +38,64 @@ def _extract_firecrawl_items(result) -> list:
         return data if isinstance(data, list) else []
     data = getattr(result, "data", None)
     return data if isinstance(data, list) else []
+
+
+def _extract_scrape_markdown(result: Any) -> str:
+    if result is None:
+        return ""
+    if isinstance(result, dict):
+        return str(result.get("markdown") or result.get("content") or result.get("html") or "")
+    for attr in ("markdown", "content", "html"):
+        value = getattr(result, attr, None)
+        if value:
+            return str(value)
+    return ""
+
+
+def _candidate_urls(state: AgentState, raw_items: List[Dict[str, Any]]) -> List[str]:
+    urls: List[str] = []
+    seen: set[str] = set()
+
+    for item in state.get("evidence", []):
+        url = str(item.get("url", "")).strip()
+        if url and url not in seen:
+            urls.append(url)
+            seen.add(url)
+        if len(urls) >= MAX_SCRAPED_URLS:
+            return urls
+
+    for item in raw_items:
+        url = str(item.get("url", "")).strip()
+        if url and url not in seen:
+            urls.append(url)
+            seen.add(url)
+        if len(urls) >= MAX_SCRAPED_URLS:
+            break
+
+    return urls
+
+
+def _summarize_scraped_pages(state: AgentState, scraped_data: List[Dict[str, str]]) -> str:
+    if not scraped_data:
+        return ""
+
+    combined_content = "\n\n".join(
+        f"Content from {item['url']}:\n{item['content'][:MAX_SCRAPE_CHARS]}"
+        for item in scraped_data
+    )[:MAX_SUMMARY_INPUT_CHARS]
+
+    temperature = float(state.get("temperature", 0.1))
+    llm = LLMFactory.get_model(model_id=FIRECRAWL_SUMMARY_MODEL, temperature=temperature)
+    response = llm.invoke([
+        SystemMessage(content=(
+            "You are summarizing Firecrawl-scraped research notes for an agent pipeline. "
+            "Return concise markdown with these sections exactly: "
+            "## Executive Summary, ## Key Findings, ## Important URLs. "
+            "Each key finding should be one bullet grounded in the scraped content."
+        )),
+        HumanMessage(content=f"Summarize these scraped websites:\n\n{combined_content}"),
+    ])
+    return str(response.content).strip()
 
 
 def _is_firecrawl_healthy(api_url: str) -> Tuple[bool, str]:
@@ -119,6 +183,8 @@ def deep_research_rag(state: AgentState) -> dict:
     logger.info(f"Starting deep research for query: {query[:100]}...")
 
     evidence: List[Dict[str, Any]] = []
+    scraped_data: List[Dict[str, str]] = []
+    firecrawl_summary = ""
     settings = load_user_settings()
     config = get_firecrawl_config(settings)
     base_url = config.get("base_url", "")
@@ -216,6 +282,35 @@ def deep_research_rag(state: AgentState) -> dict:
 
             logger.info(f"Retrieved {len(raw_items)} raw results from {attempt['label']}")
 
+            candidate_urls = _candidate_urls(state, raw_items)
+            logger.info(f"Scraping {len(candidate_urls)} URLs with Firecrawl")
+            for url in candidate_urls:
+                scrape_success, scrape_result, scrape_error = _retry_with_backoff(
+                    app.scrape_url,
+                    args=(url,),
+                    kwargs={
+                        "formats": ["markdown"],
+                        "only_main_content": True,
+                    },
+                )
+                if not scrape_success:
+                    attempt_errors.append(f"{attempt['label']} scrape {url}: {scrape_error}")
+                    continue
+                markdown = _extract_scrape_markdown(scrape_result).strip()
+                if not markdown:
+                    continue
+                scraped_data.append({
+                    "url": url,
+                    "content": markdown[:MAX_SCRAPE_CHARS],
+                })
+
+            if scraped_data:
+                try:
+                    firecrawl_summary = _summarize_scraped_pages(state, scraped_data)
+                except Exception as summary_error:
+                    logger.error(f"Failed to summarize scraped Firecrawl content: {summary_error}")
+                    attempt_errors.append(f"{attempt['label']} summary: {summary_error}")
+
             # Rerank with ReLU
             ranked_items = rerank_with_relu(
                 query,
@@ -229,11 +324,15 @@ def deep_research_rag(state: AgentState) -> dict:
 
             for item in ranked_items[:8]:
                 relu_score = float(item.get("relu_score", 0.0))
+                matching_scrape = next(
+                    (row for row in scraped_data if row["url"] == item.get("url")),
+                    None,
+                )
                 evidence.append({
                     "source": f"Firecrawl {attempt['label']}",
                     "title": item.get("title", ""),
                     "url": item.get("url", ""),
-                    "claim": (item.get("markdown", "") or item.get("title", ""))[:500],
+                    "claim": ((matching_scrape or {}).get("content") or item.get("markdown", "") or item.get("title", ""))[:500],
                     "type": "web",
                     "confidence": min(0.99, 0.62 + (relu_score / 5.5)),
                     "provider": "firecrawl",
@@ -253,12 +352,14 @@ def deep_research_rag(state: AgentState) -> dict:
 
     return {
         "evidence": evidence,
+        "scraped_data": scraped_data,
+        "firecrawl_summary": firecrawl_summary,
         "current_task": f"Deep research: {len(evidence)} pages crawled",
         "thinking_log": [{
             "node": "deep_research",
             "title": "Firecrawl deep research completed" if evidence else "Firecrawl deep research failed",
             "detail": (
-                f"Used {active_mode or 'configured'} Firecrawl and reranked {len(evidence)} pages with ReLU."
+                f"Used {active_mode or 'configured'} Firecrawl, scraped {len(scraped_data)} pages, and reranked {len(evidence)} pages with ReLU."
                 if evidence
                 else "Firecrawl could not return deep crawl pages. " + (" | ".join(attempt_errors) if attempt_errors else "No results returned.")
             ),

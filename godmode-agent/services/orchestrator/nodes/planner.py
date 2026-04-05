@@ -12,6 +12,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from services.orchestrator.state import AgentState
 from services.orchestrator.llm_factory import LLMFactory
 from services.orchestrator.runtime import load_user_settings
+from services.orchestrator.visual_output import build_visual_output_guidance
 
 # Configure logging
 logger = logging.getLogger("ray.planner")
@@ -47,16 +48,7 @@ def planner(state: AgentState) -> dict:
             }],
         }
 
-    output_features = """\
-Output features:
-- Research documents — wrap detailed research output in <document: title>…</document> tags
-- Canvas documents — wrap long-form drafts in <canvas: title>…</canvas> tags
-- Charts — use ```chart JSON blocks for rankings, trends, or comparisons
-- Mermaid diagrams — use ```mermaid code blocks for flowcharts/diagrams
-- Report cards — use ```scorecard JSON blocks for evaluations, assessments, audit summaries, or scored reviews""" if visuals_enabled else """\
-Output features:
-- Default to plain markdown answers.
-- Do not request or plan <document>, <canvas>, ```chart, ```scorecard, or ```mermaid output unless the user explicitly turns on visual mode."""
+    output_features = build_visual_output_guidance(visuals_enabled=visuals_enabled)
 
     system_prompt = f"""\
 You are a Scientific Task Planner for an AI research assistant.

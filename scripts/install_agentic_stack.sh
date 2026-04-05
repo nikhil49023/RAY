@@ -10,6 +10,7 @@ if [[ ! -x "${ROOT_DIR}/.venv/bin/python" ]]; then
 fi
 
 "${ROOT_DIR}/.venv/bin/python" -m pip install --upgrade pip
+"${ROOT_DIR}/.venv/bin/python" -m pip install -r "${ROOT_DIR}/requirements.txt"
 "${ROOT_DIR}/.venv/bin/python" -m pip install -r "${ROOT_DIR}/requirements-agentic.txt"
 
 echo "Agentic stack installed."

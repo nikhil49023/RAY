@@ -84,6 +84,8 @@ class LLMFactory:
         "groq/llama-4-scout-17b":             "Llama 4 Scout 17B (Groq)",
         "groq/deepseek-r1-distill-llama-70b": "DeepSeek R1 70B (Groq)",
         "groq/mixtral-8x7b-32768":            "Mixtral 8x7B (Groq)",
+        "groq/openai/gpt-oss-20b":            "GPT OSS 20B (Groq)",
+        "groq/openai/gpt-oss-120b":           "GPT OSS 120B (Groq)",
         # OpenRouter (free tier)
         "openrouter/openrouter/free":          "Auto Free (OpenRouter)",
         "openrouter/nvidia/nemotron-3-super-120b": "Nemotron 120B (OpenRouter)",
@@ -125,6 +127,18 @@ class LLMFactory:
             "specialty": "Long-context synthesis",
             "description": "Useful for summarizing larger prompts and synthesizing multiple ideas in one answer.",
             "features": ["Long context", "Summaries", "Synthesis"],
+        },
+        "groq/openai/gpt-oss-20b": {
+            "provider": "Groq",
+            "specialty": "Research worker",
+            "description": "Good fit for structured research synthesis, page summarization, and lower-latency analysis work.",
+            "features": ["Research", "Synthesis", "Fast"],
+        },
+        "groq/openai/gpt-oss-120b": {
+            "provider": "Groq",
+            "specialty": "Heavy reasoning",
+            "description": "Best for deeper synthesis, more deliberate reasoning, and harder multi-source research answers.",
+            "features": ["Reasoning", "Research", "Long answers"],
         },
         "openrouter/openrouter/free": {
             "provider": "OpenRouter",

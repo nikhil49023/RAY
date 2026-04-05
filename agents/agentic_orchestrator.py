@@ -4,7 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import re
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import fire
 import requests
@@ -24,7 +24,11 @@ class AgenticOrchestrator:
         self.artifacts_dir = Path(settings.artifacts_dir)
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
         rag_local_path = Path(settings.rag_chroma_local_path)
-        self.rag_local_path = rag_local_path if rag_local_path.is_absolute() else self.root_dir / rag_local_path
+        self.rag_local_path = (
+            rag_local_path
+            if rag_local_path.is_absolute()
+            else self.root_dir / rag_local_path
+        )
 
     def _slugify(self, value: str) -> str:
         slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
@@ -45,25 +49,67 @@ class AgenticOrchestrator:
     def _minimal_html_fallback(self, body: str) -> str:
         escaped = body.replace("<", "&lt;").replace(">", "&gt;")
         return (
-            "<!doctype html><html><head><meta charset='utf-8'><title>RAY Dashboard</title></head>"
-            "<body style='font-family: sans-serif; max-width: 960px; margin: 2rem auto; line-height: 1.5;'>"
-            "<h2>Autonomous Analysis Output</h2>"
-            f"<pre style='white-space: pre-wrap; background: #f6f8fa; padding: 1rem; border-radius: 8px;'>{escaped}</pre>"
-            "</body></html>"
+            "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>RAY Dashboard</title>"
+            "<style>"
+            ":root{--bg:#f5f7fb;--panel:#ffffff;--ink:#0f172a;--sub:#475569;--line:#e2e8f0;--accent:#0f766e;}"
+            "*{box-sizing:border-box}body{margin:0;font-family:Georgia, 'Times New Roman', serif;"
+            "background:radial-gradient(1200px 600px at 100% -10%,#dbeafe 0%,transparent 60%),var(--bg);color:var(--ink)}"
+            ".shell{max-width:1000px;margin:2.5rem auto;padding:0 1rem}.card{background:var(--panel);border:1px solid var(--line);"
+            "border-radius:16px;padding:1.25rem;box-shadow:0 18px 30px rgba(2,6,23,.06)}"
+            "h1{font-size:1.3rem;margin:.1rem 0 .7rem 0}p{margin:.2rem 0 1rem 0;color:var(--sub);line-height:1.5}"
+            "pre{white-space:pre-wrap;margin:0;background:#f8fafc;border:1px solid var(--line);padding:1rem;border-radius:12px;"
+            "font:500 13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}"
+            "</style></head><body><main class='shell'><section class='card'><h1>Autonomous Analysis Output</h1>"
+            "<p>Generated fallback artifact with local formatting and preserved response content.</p>"
+            f"<pre>{escaped}</pre></section></main></body></html>"
         )
+
+    def _discover_urls(self, objective: str, limit: int = 3) -> List[str]:
+        candidates = re.findall(r"https?://[^\s]+", objective, flags=re.IGNORECASE)
+        if candidates:
+            seen: List[str] = []
+            for item in candidates:
+                clean = item.strip().rstrip(")].,\"'")
+                if clean and clean not in seen:
+                    seen.append(clean)
+            return seen[:limit]
+
+        try:
+            search_hits = self.clients.search_web(
+                objective, max_results=max(limit + 2, 5)
+            )
+        except Exception:
+            return []
+
+        urls: List[str] = []
+        for hit in search_hits:
+            url = str(hit.get("url", "")).strip()
+            if url and url not in urls:
+                urls.append(url)
+            if len(urls) >= limit:
+                break
+        return urls
 
     def _embedding_endpoints(self) -> list[str]:
         configured = settings.ollama_base_url.strip().rstrip("/")
         endpoints = [configured] if configured else []
         if "://ollama" in configured:
             endpoints.append(configured.replace("://ollama", "://localhost"))
-        return [item for index, item in enumerate(endpoints) if item and item not in endpoints[:index]]
+        return [
+            item
+            for index, item in enumerate(endpoints)
+            if item and item not in endpoints[:index]
+        ]
 
     def _embed_query(self, query: str) -> list[float]:
         errors: list[str] = []
         for base in self._embedding_endpoints():
             for endpoint, payload in [
-                ("/api/embeddings", {"model": settings.rag_embedding_model, "prompt": query}),
+                (
+                    "/api/embeddings",
+                    {"model": settings.rag_embedding_model, "prompt": query},
+                ),
                 ("/api/embed", {"model": settings.rag_embedding_model, "input": query}),
             ]:
                 try:
@@ -71,14 +117,24 @@ class AgenticOrchestrator:
                     response.raise_for_status()
                     body = response.json()
                     embedding = body.get("embedding")
-                    if not embedding and isinstance(body.get("data"), list) and body["data"]:
+                    if (
+                        not embedding
+                        and isinstance(body.get("data"), list)
+                        and body["data"]
+                    ):
                         embedding = body["data"][0].get("embedding")
-                    if not embedding and isinstance(body.get("embeddings"), list) and body["embeddings"]:
+                    if (
+                        not embedding
+                        and isinstance(body.get("embeddings"), list)
+                        and body["embeddings"]
+                    ):
                         first = body["embeddings"][0]
                         if isinstance(first, list):
                             embedding = first
                     if not embedding:
-                        raise RuntimeError("embedding vector missing in Ollama response")
+                        raise RuntimeError(
+                            "embedding vector missing in Ollama response"
+                        )
                     return embedding
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"{base}{endpoint}: {type(exc).__name__}: {exc}")
@@ -110,11 +166,15 @@ class AgenticOrchestrator:
         errors: list[str] = []
 
         try:
-            remote = chromadb.HttpClient(host=settings.rag_chroma_host, port=settings.rag_chroma_port)
+            remote = chromadb.HttpClient(
+                host=settings.rag_chroma_host, port=settings.rag_chroma_port
+            )
             remote.heartbeat()
             return remote, "http"
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"http://{settings.rag_chroma_host}:{settings.rag_chroma_port}: {type(exc).__name__}: {exc}")
+            errors.append(
+                f"http://{settings.rag_chroma_host}:{settings.rag_chroma_port}: {type(exc).__name__}: {exc}"
+            )
 
         try:
             local = chromadb.PersistentClient(path=str(self.rag_local_path))
@@ -140,7 +200,9 @@ class AgenticOrchestrator:
                 )
             collection = client.get_collection(name=settings.rag_collection_name)
             embedding = self._embed_query(query)
-            result = collection.query(query_embeddings=[embedding], n_results=settings.rag_top_k)
+            result = collection.query(
+                query_embeddings=[embedding], n_results=settings.rag_top_k
+            )
             documents = (result.get("documents") or [[]])[0]
             metadatas = (result.get("metadatas") or [[]])[0]
 
@@ -150,7 +212,9 @@ class AgenticOrchestrator:
             lines = []
             for index, content in enumerate(documents, start=1):
                 source = ""
-                if index - 1 < len(metadatas) and isinstance(metadatas[index - 1], dict):
+                if index - 1 < len(metadatas) and isinstance(
+                    metadatas[index - 1], dict
+                ):
                     source = metadatas[index - 1].get("source", "")
                 prefix = f"[{index}]"
                 if source:
@@ -189,9 +253,13 @@ class AgenticOrchestrator:
         old_api_key = settings.firecrawl_api_key
         try:
             if firecrawl_base_url_override is not None:
-                object.__setattr__(settings, "firecrawl_base_url", firecrawl_base_url_override)
+                object.__setattr__(
+                    settings, "firecrawl_base_url", firecrawl_base_url_override
+                )
             if firecrawl_api_key_override is not None:
-                object.__setattr__(settings, "firecrawl_api_key", firecrawl_api_key_override)
+                object.__setattr__(
+                    settings, "firecrawl_api_key", firecrawl_api_key_override
+                )
             payload = self.clients.scrape_url(url)
             return json.dumps(payload, ensure_ascii=True)[:12000]
         except Exception as exc:  # noqa: BLE001
@@ -207,8 +275,12 @@ class AgenticOrchestrator:
         system_prompt_override: str | None = None,
     ) -> Dict[str, Any]:
         grounded_objective = self._augment_objective_with_rag(objective)
-        system_prompt = (system_prompt_override or settings.agentic_system_prompt).strip() or settings.agentic_system_prompt
-        answer = self.personal.ask(grounded_objective, system_prompt=system_prompt).get("answer", "")
+        system_prompt = (
+            system_prompt_override or settings.agentic_system_prompt
+        ).strip() or settings.agentic_system_prompt
+        answer = self.personal.ask(grounded_objective, system_prompt=system_prompt).get(
+            "answer", ""
+        )
         try:
             html = self.personal.visualize(answer, chart=settings.agentic_default_chart)
         except Exception:  # noqa: BLE001
@@ -243,9 +315,15 @@ class AgenticOrchestrator:
         tool = getattr(crewai_tools_module, "tool")
 
         selected_model = (model_override or settings.litellm_model).strip()
-        selected_base_url = (litellm_base_url_override or settings.litellm_base_url).strip().rstrip("/")
-        selected_api_key = (litellm_api_key_override or settings.litellm_api_key).strip()
-        shared_directive = (system_prompt_override or settings.agentic_system_prompt).strip() or settings.agentic_system_prompt
+        selected_base_url = (
+            (litellm_base_url_override or settings.litellm_base_url).strip().rstrip("/")
+        )
+        selected_api_key = (
+            litellm_api_key_override or settings.litellm_api_key
+        ).strip()
+        shared_directive = (
+            system_prompt_override or settings.agentic_system_prompt
+        ).strip() or settings.agentic_system_prompt
 
         llm = LLM(
             model=selected_model,
@@ -253,6 +331,15 @@ class AgenticOrchestrator:
             api_key=selected_api_key,
             temperature=0.0,
         )
+
+        discovered_urls = self._discover_urls(objective, limit=3)
+        objective_with_urls = objective
+        if discovered_urls:
+            objective_with_urls = (
+                objective
+                + "\n\nCandidate web sources (from prompt or DuckDuckGo):\n"
+                + "\n".join(f"- {url}" for url in discovered_urls)
+            )
 
         @tool("Firecrawl Scrape")
         def firecrawl_scrape(url: str) -> str:
@@ -262,6 +349,16 @@ class AgenticOrchestrator:
                 firecrawl_base_url_override=firecrawl_base_url_override,
                 firecrawl_api_key_override=firecrawl_api_key_override,
             )
+
+        @tool("DuckDuckGo Search")
+        def duckduckgo_search(query: str) -> str:
+            """Search the web with DuckDuckGo and return compact JSON results."""
+            try:
+                return json.dumps(self.clients.search_web(query), ensure_ascii=True)[
+                    :12000
+                ]
+            except Exception as exc:  # noqa: BLE001
+                return f"DuckDuckGo search unavailable: {type(exc).__name__}: {exc}"
 
         @tool("Local Document Search")
         def local_document_search(query: str) -> str:
@@ -278,7 +375,7 @@ class AgenticOrchestrator:
                 "You are a strict researcher who cites context and avoids unsupported claims. "
                 "You explicitly mark unknowns when data is missing."
             ),
-            tools=[firecrawl_scrape, local_document_search],
+            tools=[duckduckgo_search, firecrawl_scrape, local_document_search],
             llm=llm,
             allow_delegation=False,
             verbose=False,
@@ -297,12 +394,11 @@ class AgenticOrchestrator:
 
         research_task = Task(
             description=(
-                "System directive:\n"
-                + shared_directive
-                + "\n\n"
+                "System directive:\n" + shared_directive + "\n\n"
                 "Objective:\n"
                 "{objective}\n\n"
                 "Use tools as needed. Prefer local RAG first, then web scraping for missing context. "
+                "If the user did not provide URLs, run DuckDuckGo Search first and then scrape top results. "
                 "Return concise findings with explicit evidence bullets."
             ),
             expected_output=(
@@ -318,9 +414,7 @@ class AgenticOrchestrator:
                 "1) A concise answer for the user.\n"
                 "2) A single ```html``` code block for an interactive visualization dashboard."
             ),
-            expected_output=(
-                "A final narrative answer and one HTML code block only."
-            ),
+            expected_output=("A final narrative answer and one HTML code block only."),
             agent=visualizer,
             context=[research_task],
         )
@@ -332,12 +426,14 @@ class AgenticOrchestrator:
             verbose=False,
         )
 
-        outcome = crew.kickoff(inputs={"objective": objective})
+        outcome = crew.kickoff(inputs={"objective": objective_with_urls})
         outcome_text = str(outcome)
         html = self._extract_html_block(outcome_text)
         if not html:
             try:
-                html = self.personal.visualize(outcome_text, chart=settings.agentic_default_chart)
+                html = self.personal.visualize(
+                    outcome_text, chart=settings.agentic_default_chart
+                )
             except Exception:  # noqa: BLE001
                 html = self._minimal_html_fallback(outcome_text)
 
@@ -366,7 +462,11 @@ class AgenticOrchestrator:
 
         stack_ready = importlib.util.find_spec("crewai") is not None
 
-        crew_enabled = settings.agentic_enable_crewai if enable_crewai_override is None else bool(enable_crewai_override)
+        crew_enabled = (
+            settings.agentic_enable_crewai
+            if enable_crewai_override is None
+            else bool(enable_crewai_override)
+        )
 
         if not crew_enabled:
             return self._fallback_run(

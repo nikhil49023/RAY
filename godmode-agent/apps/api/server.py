@@ -57,6 +57,8 @@ from services.orchestrator.runtime import (
 )
 from services.agent_backends.codex_cli import stream_codex_cli
 from services.memory.semantic_memory import retrieve_semantic_memory
+from services.memory.semantic_memory import write_semantic_memory
+from services.memory.stores.qdrant_index import QdrantIndex
 
 # ── Data dirs ─────────────────────────────────────────────────────────────── #
 DATA_DIR = ROOT_DIR / "data"
@@ -65,6 +67,8 @@ ARTIFACTS_DIR = DATA_DIR / "artifacts"
 RESEARCH_DIR = DATA_DIR / "research"
 for d in [THREADS_DIR, ARTIFACTS_DIR, RESEARCH_DIR]:
     d.mkdir(parents=True, exist_ok=True)
+
+execution_index = QdrantIndex(collection_name="execution_index")
 
 # ── CORS Configuration ───────────────────────────────────────────────────── #
 # Environment-based CORS configuration for security
@@ -116,17 +120,19 @@ MAX_TITLE_LENGTH = 500
 MAX_CONTENT_LENGTH = 1000000  # ~1MB
 
 
-def _sanitize_id(resource_id: str, directory: Path) -> Path:
-    """Safely construct a file path, preventing path traversal attacks."""
-    # Normalize unicode and remove dangerous characters
-    normalized = unicodedata.normalize("NFKC", resource_id)
-    # Only allow alphanumeric, underscore, hyphen, and the timestamp format
-    safe_id = re.sub(r"[^a-zA-Z0-9_\-]", "", normalized)
-    if not safe_id or safe_id != resource_id.replace("-", "").replace("_", ""):
+def _normalize_resource_id(resource_id: str) -> str:
+    normalized = unicodedata.normalize("NFKC", resource_id or "").strip()
+    if not normalized or not re.fullmatch(r"[a-zA-Z0-9_-]+", normalized):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid resource ID format"
         )
+    return normalized
+
+
+def _sanitize_id(resource_id: str, directory: Path) -> Path:
+    """Safely construct a file path, preventing path traversal attacks."""
+    safe_id = _normalize_resource_id(resource_id)
     # Construct path and verify it's within the expected directory
     filepath = directory / f"{safe_id}.json"
     try:
@@ -358,9 +364,11 @@ class ChatRequest(BaseModel):
     mode: str = Field(default="standard", pattern="^(standard|research|reasoning)$")
     temperature: float = Field(default=0.1, ge=0.0, le=2.0)
     visualsEnabled: bool = Field(default=False)
+    sessionId: Optional[str] = Field(default=None, max_length=MAX_TITLE_LENGTH)
 
 
 class ThreadSave(BaseModel):
+    id: Optional[str] = Field(default=None, max_length=MAX_TITLE_LENGTH)
     title: str = Field(default="Untitled", max_length=MAX_TITLE_LENGTH)
     messages: List[dict] = Field(default_factory=list, max_length=MAX_MESSAGES)
 
@@ -425,7 +433,10 @@ async def chat_endpoint(request: Request):
         "memory_hits": retrieved_memory.get("memory_hits", []),
         "behavioral_memories": retrieved_memory.get("behavioral_memories", []),
         "memory_writes": [],
+        "session_id": chat_req.sessionId or "",
         "evidence": [],
+        "scraped_data": [],
+        "firecrawl_summary": "",
         "artifacts": [],
         "thinking_log": [],
         "node_timings": {},
@@ -744,16 +755,25 @@ async def list_threads():
 
 @app.post("/api/threads")
 async def save_thread(body: ThreadSave):
-    tid = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
+    tid = _normalize_resource_id(body.id) if body.id else datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
+    existing = _safe_json_load(THREADS_DIR / f"{tid}.json") if body.id else None
     data = {
         "id": tid,
         "title": body.title[:MAX_TITLE_LENGTH],
         "messages": body.messages[:MAX_MESSAGES],
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": (existing or {}).get("created_at", datetime.now(timezone.utc).isoformat()),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     filepath = THREADS_DIR / f"{tid}.json"
     filepath.write_text(_js(data), encoding="utf-8")
+    user_text = "\n\n".join(str(item.get("content", "")) for item in body.messages if item.get("role") == "user")
+    assistant_text = "\n\n".join(str(item.get("content", "")) for item in body.messages if item.get("role") == "assistant")
+    write_semantic_memory(
+        user_input=user_text,
+        assistant_output=assistant_text,
+        session_id=tid,
+        source="thread_archive",
+    )
     logger.info(f"Saved thread: {tid}")
     return {"id": tid}
 
@@ -780,6 +800,10 @@ async def delete_thread(tid: str):
 
     if filepath.exists():
         filepath.unlink()
+        try:
+            execution_index.delete_by_field("session_id", tid)
+        except Exception as exc:
+            logger.warning(f"Failed to delete archived semantic memory for thread {tid}: {exc}")
         logger.info(f"Deleted thread: {tid}")
     return {"ok": True}
 

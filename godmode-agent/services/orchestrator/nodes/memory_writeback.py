@@ -56,11 +56,32 @@ def memory_writeback(state: AgentState) -> dict:
     Persist the latest turn into semantic memory and extract durable preferences.
     """
     user_input, assistant_output = _latest_user_and_assistant(state)
+    session_id = str(state.get("session_id", "") or "").strip()
+    scraped_data = state.get("scraped_data", []) or []
+    firecrawl_summary = str(state.get("firecrawl_summary", "") or "").strip()
+    supplemental_entries: list[dict[str, str]] = []
+    for item in scraped_data:
+        url = str(item.get("url", "")).strip()
+        content = str(item.get("content", "")).strip()
+        if url and content:
+            supplemental_entries.append({
+                "type": "document",
+                "source": "web_search",
+                "content": f"Scraped from {url}\n\n{content}",
+            })
+    if firecrawl_summary:
+        supplemental_entries.append({
+            "type": "fact",
+            "source": "web_search",
+            "content": firecrawl_summary,
+        })
+
     memory_writes = write_semantic_memory(
         user_input=user_input,
         assistant_output=assistant_output,
-        session_id="",
+        session_id=session_id,
         source="conversation",
+        supplemental_entries=supplemental_entries,
     )
 
     if not user_input and not assistant_output:

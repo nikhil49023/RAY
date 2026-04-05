@@ -43,11 +43,14 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
 
-  # ── Firecrawl Self-Host Stack ──────────────────────────────────
+  # ── Firecrawl Self-Host Stack (Optional) ─────────────────────────
   # Local web crawling — no API key required when USE_DB_AUTHENTICATION=false
+  # Start with: docker compose --profile firecrawl up -d
+  # Or use: scripts/start_firecrawl_selfhost.sh
   firecrawl-api:
     image: ghcr.io/mendableai/firecrawl:latest
     container_name: firecrawl-api
+    profiles: ["firecrawl"]
     restart: unless-stopped
     ports:
       - "3002:3002"
@@ -73,6 +76,7 @@ services:
   firecrawl-redis:
     image: redis:7-alpine
     container_name: firecrawl-redis
+    profiles: ["firecrawl"]
     restart: unless-stopped
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
@@ -86,6 +90,7 @@ services:
   firecrawl-playwright:
     image: ghcr.io/mendableai/firecrawl-playwright:latest
     container_name: firecrawl-playwright
+    profiles: ["firecrawl"]
     restart: unless-stopped
     environment:
       - PORT=3000

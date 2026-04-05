@@ -38,7 +38,9 @@ class PersonalAgent:
             ),
             ChatMessage(role="user", content=prompt),
         ]
-        return self.clients.groq_chat(messages, model=settings.groq_model_quality, temperature=0.0)
+        return self.clients.groq_chat(
+            messages, model=settings.groq_model_quality, temperature=0.0
+        )
 
     def explain(self, content: str) -> str:
         """Explain raw findings in concise bullet points."""
@@ -52,7 +54,9 @@ class PersonalAgent:
             ),
             ChatMessage(role="user", content=content),
         ]
-        return self.clients.groq_chat(messages, model=settings.research_model_groq, temperature=0.0)
+        return self.clients.groq_chat(
+            messages, model=settings.research_model_groq, temperature=0.0
+        )
 
     def visualize(self, data: str, chart: str = "bar") -> str:
         """Generate runnable HTML for an interactive chart artifact."""
@@ -60,26 +64,45 @@ class PersonalAgent:
             ChatMessage(
                 role="system",
                 content=(
-                    "You are a UI developer. Generate a single HTML file with embedded JavaScript that renders "
-                    f"an interactive {chart} chart from the given data. Return only HTML."
+                    "You are a senior UI engineer and data storyteller. Generate a single responsive HTML file "
+                    "with embedded JavaScript and CSS that renders polished, modern visuals. "
+                    f"Include at least one interactive {chart} chart, clear typography, balanced spacing, "
+                    "and an intentional color system. Avoid generic defaults and avoid purple themes. "
+                    "Use semantic sections (header, KPIs, chart area, key takeaways), ensure mobile readability, "
+                    "and include smooth but minimal entry animation. Return only HTML."
                 ),
             ),
             ChatMessage(role="user", content=data),
         ]
-        return self.clients.groq_chat(messages, model=settings.groq_model_quality, temperature=0.0)
+        return self.clients.groq_chat(
+            messages, model=settings.groq_model_quality, temperature=0.0
+        )
 
-    def translate(self, text: str, target_language_code: str = "gu-IN", source_language_code: str = "auto") -> str:
+    def translate(
+        self,
+        text: str,
+        target_language_code: str = "gu-IN",
+        source_language_code: str = "auto",
+    ) -> str:
         """Translate text using Sarvam."""
-        response = self.clients.translate(text, target_language_code, source_language_code)
+        response = self.clients.translate(
+            text, target_language_code, source_language_code
+        )
         return json.dumps(response, indent=2, ensure_ascii=True)
 
-    def run_pipeline(self, url: str, chart: str = "bar", target_language_code: str = "gu-IN") -> Dict[str, str]:
+    def run_pipeline(
+        self, url: str, chart: str = "bar", target_language_code: str = "gu-IN"
+    ) -> Dict[str, str]:
         """Research -> analyze -> explain -> visualize -> translate summary."""
         research_json = self.research(url, crawl=False)
-        analysis = self.analyze(f"Analyze this research data and list trends as JSON:\n{research_json}")
+        analysis = self.analyze(
+            f"Analyze this research data and list trends as JSON:\n{research_json}"
+        )
         explanation = self.explain(analysis)
         html = self.visualize(analysis, chart=chart)
-        translation = self.translate(explanation, target_language_code=target_language_code)
+        translation = self.translate(
+            explanation, target_language_code=target_language_code
+        )
         return {
             "research": research_json,
             "analysis": analysis,
@@ -88,11 +111,18 @@ class PersonalAgent:
             "translation": translation,
         }
 
-    def ask(self, prompt: str, prefer_ensemble: bool = False, system_prompt: str | None = None) -> Dict[str, str]:
+    def ask(
+        self,
+        prompt: str,
+        prefer_ensemble: bool = False,
+        system_prompt: str | None = None,
+    ) -> Dict[str, str]:
         """Dynamic semantic routing across Groq/OpenRouter/Sarvam strategy."""
         decision = self.router.decide(prompt, prefer_ensemble=prefer_ensemble)
 
-        resolved_system_prompt = (system_prompt or settings.agentic_system_prompt).strip()
+        resolved_system_prompt = (
+            system_prompt or settings.agentic_system_prompt
+        ).strip()
         system_msg = ChatMessage(
             role="system",
             content=resolved_system_prompt
@@ -106,9 +136,15 @@ class PersonalAgent:
             for tagged_model in decision.ensemble_models:
                 provider, model = tagged_model.split(":", 1)
                 if provider == "openrouter":
-                    drafts.append(self.clients.openrouter_chat(messages, model=model, temperature=0.0))
+                    drafts.append(
+                        self.clients.openrouter_chat(
+                            messages, model=model, temperature=0.0
+                        )
+                    )
                 else:
-                    drafts.append(self.clients.groq_chat(messages, model=model, temperature=0.0))
+                    drafts.append(
+                        self.clients.groq_chat(messages, model=model, temperature=0.0)
+                    )
 
             synthesis_prompt = (
                 "Original prompt:\n"
@@ -123,7 +159,10 @@ class PersonalAgent:
             )
             final_answer = self.clients.groq_chat(
                 [
-                    ChatMessage(role="system", content="You are a synthesis judge. Return one best final answer."),
+                    ChatMessage(
+                        role="system",
+                        content="You are a synthesis judge. Return one best final answer.",
+                    ),
                     ChatMessage(role="user", content=synthesis_prompt),
                 ],
                 model=settings.groq_model_fast,
@@ -131,9 +170,13 @@ class PersonalAgent:
             )
         else:
             if decision.primary_provider == "openrouter":
-                final_answer = self.clients.openrouter_chat(messages, model=decision.primary_model, temperature=0.0)
+                final_answer = self.clients.openrouter_chat(
+                    messages, model=decision.primary_model, temperature=0.0
+                )
             else:
-                final_answer = self.clients.groq_chat(messages, model=decision.primary_model, temperature=0.0)
+                final_answer = self.clients.groq_chat(
+                    messages, model=decision.primary_model, temperature=0.0
+                )
 
         return {
             "route_intent": decision.intent,
@@ -154,8 +197,12 @@ class PersonalAgent:
             }
 
         # Lightweight decomposition pipeline while keeping the current provider router.
-        planner = self.ask(f"Break this objective into 3 clear execution steps: {objective}")
-        executor = self.ask(f"Execute this objective using the plan below and return concise output. Plan: {planner['answer']}")
+        planner = self.ask(
+            f"Break this objective into 3 clear execution steps: {objective}"
+        )
+        executor = self.ask(
+            f"Execute this objective using the plan below and return concise output. Plan: {planner['answer']}"
+        )
         reviewer = self.ask(
             "Review this output for correctness and missing assumptions. "
             f"Objective: {objective}\nOutput: {executor['answer']}"
@@ -168,9 +215,13 @@ class PersonalAgent:
             "review": reviewer["answer"],
         }
 
-    def draft_document(self, title: str, markdown: str, output_format: str = "docx") -> Dict[str, str]:
+    def draft_document(
+        self, title: str, markdown: str, output_format: str = "docx"
+    ) -> Dict[str, str]:
         """Draft a document artifact as PDF or DOCX from markdown."""
-        return self.skills.generate_document(title=title, markdown=markdown, output_format=output_format)
+        return self.skills.generate_document(
+            title=title, markdown=markdown, output_format=output_format
+        )
 
     def illustrate(self, prompt: str, provider: str = "huggingface") -> Dict[str, str]:
         """Generate an image artifact through a free hosted image API."""

@@ -23,13 +23,13 @@ Custom autonomous workspace built with Chainlit + CrewAI + LiteLLM + Ollama + Ch
 ```bash
 scripts/start_docker_stack.sh
 scripts/install_agentic_stack.sh
-scripts/start_chainlit.sh
+scripts/start_langgraph_workspace.sh
 ```
 
 Or single command:
 
 ```bash
-scripts/start_chainlit_workspace.sh
+scripts/start_app.sh
 ```
 
 ## Local RAG Index
@@ -51,6 +51,7 @@ Use the Chainlit settings panel to configure:
 - `Dashboard Style` for runtime telemetry visuals.
 - `LiteLLM Base URL` and `LiteLLM API Key`.
 - `Firecrawl Base URL` and optional `Firecrawl API Key`.
+- DuckDuckGo is used for URL discovery when no explicit links are provided.
 - `Enable CrewAI` switch.
 - Theme: `system`, `light`, `dark`.
 

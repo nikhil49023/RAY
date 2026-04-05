@@ -124,6 +124,7 @@ def write_semantic_memory(
     assistant_output: str,
     session_id: str = "",
     source: str = "conversation",
+    supplemental_entries: list[dict[str, str]] | None = None,
 ) -> list[dict]:
     timestamp = datetime.now(timezone.utc).isoformat()
     records: list[dict] = []
@@ -141,6 +142,23 @@ def write_semantic_memory(
                 "content": chunk,
                 "timestamp": timestamp,
                 "source": memory_source if source == "conversation" else source,
+                "topic_tags": _topic_tags(chunk),
+                "session_id": session_id,
+                "entities": _extract_entities(chunk),
+            })
+
+    for entry in supplemental_entries or []:
+        raw_content = str(entry.get("content") or "").strip()
+        if not raw_content:
+            continue
+        memory_type = str(entry.get("type") or "fact")
+        memory_source = str(entry.get("source") or source)
+        for chunk in _chunk_text(raw_content):
+            records.append({
+                "type": memory_type,
+                "content": chunk,
+                "timestamp": timestamp,
+                "source": memory_source,
                 "topic_tags": _topic_tags(chunk),
                 "session_id": session_id,
                 "entities": _extract_entities(chunk),

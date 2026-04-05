@@ -59,3 +59,46 @@ def test_codex_proxy_models_match_runtime_ids():
 
     assert payload["data"][0]["id"] == "openai/gpt-oss-20b"
     assert payload["data"][1]["id"] == "openai/gpt-oss-120b"
+
+
+def test_thread_delete_removes_saved_thread_and_session_memory(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(server, "THREADS_DIR", tmp_path)
+
+    def fake_write_semantic_memory(**kwargs):
+        captured["saved_session_id"] = kwargs["session_id"]
+        return []
+
+    class FakeExecutionIndex:
+        def delete_by_field(self, field, value):
+            captured["deleted_field"] = field
+            captured["deleted_value"] = value
+
+    monkeypatch.setattr(server, "write_semantic_memory", fake_write_semantic_memory)
+    monkeypatch.setattr(server, "execution_index", FakeExecutionIndex())
+
+    client = TestClient(server.app)
+    save_response = client.post(
+        "/api/threads",
+        json={
+            "id": "chat_123",
+            "title": "Chat",
+            "messages": [
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "hi"},
+            ],
+        },
+    )
+
+    assert save_response.status_code == 200
+    assert save_response.json()["id"] == "chat_123"
+    assert (tmp_path / "chat_123.json").exists()
+    assert captured["saved_session_id"] == "chat_123"
+
+    delete_response = client.delete("/api/threads/chat_123")
+
+    assert delete_response.status_code == 200
+    assert not (tmp_path / "chat_123.json").exists()
+    assert captured["deleted_field"] == "session_id"
+    assert captured["deleted_value"] == "chat_123"

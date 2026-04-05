@@ -31,9 +31,14 @@ def test_memory_prefetch_uses_semantic_memory(monkeypatch):
 def test_memory_writeback_persists_turn_and_rules(monkeypatch):
     captured: dict[str, object] = {}
 
+    def fake_write_semantic_memory(**kwargs):
+        captured["session_id"] = kwargs["session_id"]
+        captured["supplemental_entries"] = kwargs["supplemental_entries"]
+        return [{"type": "conversation", "content": kwargs["user_input"]}]
+
     monkeypatch.setattr(
         "services.orchestrator.nodes.memory_writeback.write_semantic_memory",
-        lambda **kwargs: [{"type": "conversation", "content": kwargs["user_input"]}],
+        fake_write_semantic_memory,
     )
 
     class FakeBehaviorIndex:
@@ -53,8 +58,13 @@ def test_memory_writeback_persists_turn_and_rules(monkeypatch):
             AIMessage(content="I will keep it short."),
         ],
         "answer": "I will keep it short.",
+        "session_id": "chat_123",
+        "scraped_data": [{"url": "https://example.com", "content": "Example page"}],
+        "firecrawl_summary": "Example page summary",
     })
 
     assert result["memory_writes"] == [{"type": "conversation", "content": "Keep it short."}]
     assert result["behavioral_memories"] == ["Prefer concise answers", "Use tables for comparisons"]
     assert captured["payloads"][0]["rule"] == "Prefer concise answers"
+    assert captured["session_id"] == "chat_123"
+    assert len(captured["supplemental_entries"]) == 2

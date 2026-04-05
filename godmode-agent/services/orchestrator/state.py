@@ -17,6 +17,7 @@ def merge_messages(left: list[BaseMessage], right: list[BaseMessage]) -> list[Ba
 class AgentState(TypedDict, total=False):
     # ── Core ─────────────────────────────────────────────────────────────── #
     messages: Annotated[List[BaseMessage], merge_messages]
+    session_id: Optional[str]
 
     # ── Context Pipeline ─────────────────────────────────────────────────── #
     session_summary: Optional[str]
@@ -38,6 +39,8 @@ class AgentState(TypedDict, total=False):
     # ── Evidence (merged via operator.add across parallel nodes) ──────────── #
     evidence: Annotated[List[dict], operator.add]
     thinking_log: Annotated[List[dict], operator.add]
+    scraped_data: List[dict]
+    firecrawl_summary: Optional[str]
 
     # ── Output ───────────────────────────────────────────────────────────── #
     answer: Optional[str]
