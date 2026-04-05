@@ -30,5 +30,6 @@ htmlcov/
 .hypothesis/
 .cache/
 data/
+release/
 logs/
 *.log
