@@ -73,8 +73,13 @@ interface AgentRuntimeSettings {
   codexApprovalPolicy: string
 }
 interface AppSettings {
+  apiKeys?: {
+    groq?: string
+    sarvam?: string
+    huggingface?: string
+    firecrawl?: string
+  }
   temperature?: number
-  apiKeys?: { groq?: string; sarvam?: string; openrouter?: string }
   firecrawl?: Partial<FirecrawlSettings>
   ui?: Partial<UiSettings>
   agentRuntime?: Partial<AgentRuntimeSettings>
@@ -373,7 +378,14 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
   return response.json() as Promise<T>
 }
 
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+const API_BASE = (() => {
+  const configured = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+  if (configured) return configured
+  if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    return 'http://127.0.0.1:8002'
+  }
+  return ''
+})()
 
 function apiUrl(path: string): string {
   return API_BASE ? `${API_BASE}${path}` : path
@@ -2324,8 +2336,8 @@ export default function App() {
   const [planPreview, setPlanPreview] = useState('')
   const [researchLevel, setResearchLevel] = useState('basic')
   const [temperature, setTemperature] = useState(0.1)
+  const [apiKeys, setApiKeys] = useState({ groq: '', sarvam: '', huggingface: '', firecrawl: '' })
   const [uiError, setUiError] = useState('')
-  const [apiKeys, setApiKeys] = useState({ groq: '', sarvam: '', openrouter: '' })
   const [firecrawlConfig, setFirecrawlConfig] = useState<FirecrawlSettings>(DEFAULT_FIRECRAWL)
   const [uiPrefs, setUiPrefs] = useState<UiSettings>(DEFAULT_UI)
   const [agentRuntime, setAgentRuntime] = useState<AgentRuntimeSettings>(DEFAULT_AGENT_RUNTIME)
@@ -2440,7 +2452,8 @@ export default function App() {
       setApiKeys({
         groq: settings.apiKeys?.groq || '',
         sarvam: settings.apiKeys?.sarvam || '',
-        openrouter: settings.apiKeys?.openrouter || '',
+        huggingface: settings.apiKeys?.huggingface || '',
+        firecrawl: settings.apiKeys?.firecrawl || '',
       })
       setFirecrawlConfig({
         ...DEFAULT_FIRECRAWL,
@@ -2990,9 +3003,29 @@ export default function App() {
                     <input
                       type="password"
                       className="form-input"
-                      value={apiKeys.openrouter}
-                      onChange={event => setApiKeys(current => ({ ...current, openrouter: event.target.value }))}
                       placeholder="sk-or-..."
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">HuggingFace Token (for AI Illustrations)</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      value={apiKeys.huggingface}
+                      onChange={event => setApiKeys(current => ({ ...current, huggingface: event.target.value }))}
+                      placeholder="hf_..."
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Firecrawl API Key</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      value={apiKeys.firecrawl}
+                      onChange={event => setApiKeys(current => ({ ...current, firecrawl: event.target.value }))}
+                      placeholder="fc-..."
                     />
                   </div>
 

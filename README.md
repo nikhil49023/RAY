@@ -1,74 +1,59 @@
-# RAY Agentic Workspace (Chainlit First)
+# RAY Agentic Workspace
 
-Custom autonomous workspace built with Chainlit + CrewAI + LiteLLM + Ollama + Chroma.
+RAY is a local-first agent workspace centered on the `godmode-agent` app: a FastAPI backend plus a React/Vite frontend, with LangGraph orchestration, LiteLLM routing, Ollama embeddings, and local/remote vector stores.
 
-## Core Features
+## 100% Free & Local-First Architecture
+This architecture is designed to cost **$0/month** by leveraging powerful local tools and generous free cloud tiers:
+* **Web Scraping:** Uses **Crawl4AI** locally (via Playwright) instead of paid APIs like Firecrawl.
+* **Web Search:** Uses **DuckDuckGo** (Free) for discovering URLs.
+* **LLM Reasoning:** Uses **Groq's Free Tier** (e.g. `llama-3.3-70b-versatile`) for orchestration, planning, and summarization.
+* **Local Fallback:** Uses **Ollama** for fallback LLM generation.
+* **Embeddings & Vector DB:** Uses **Ollama embeddings** and a self-hosted **Qdrant** Docker container, keeping your data entirely local and free from API costs.
 
-- Chainlit custom UI with inline runtime scoreboard, gauges, and artifact previews.
-- CrewAI orchestrator for autonomous tool use (RAG + Firecrawl + visualization).
-- Runtime model selection from chat settings.
-- Runtime API/base URL overrides for LiteLLM and Firecrawl.
-- Behavioral reinforcement memory (RAG-backed) persisted in Chroma + `data/memory/behavior_rules.jsonl`.
-- Local conversation history persisted in `data/memory/chainlit_history.jsonl`.
+## Core Capabilities
+* **Autonomous Web Research:** Basic RAG via web search, and "Deep Research Mode" for complex, multi-page asynchronous scraping.
+* **Continuous Learning (RL Feedback):** The agent learns from your corrections via the `/api/feedback` endpoint, permanently storing preferences in the `behavior_index` (Qdrant).
+* **Document Processing:** Ingests local files and PDFs for instant semantic search.
+* **Advanced Orchestration:** Intent routing, multi-step planning, and rigorous claim verification (using ReLU scoring to prevent hallucinations).
 
-## Services
+## Skills & Visual Artifacts
+While the base agent orchestrates research, RAY includes an extensible **Skills Framework** (`core/skills/`). 
+Because basic LLMs often struggle with producing high-quality complex visual artifacts (like code, complex diagrams, or full React components), you can inject specialized logic into the pipeline:
+* Generate **React Components** via `react_component` skill.
+* Generate advanced **Mermaid.js** diagrams via `mermaid_diagram` skill.
+* Easily extend the `core/skills/__init__.py` file to add custom integrations, Python-based generators, or better artifact templates.
 
-- LiteLLM router: `http://localhost:4000`
-- ChromaDB: `http://localhost:8000`
-- Ollama: container service (used by app)
-- Chainlit UI: `http://localhost:8001`
+## Primary App
 
-## Start
+- Backend: `godmode-agent/apps/api/server.py`
+- Frontend: `godmode-agent/apps/web`
+- Orchestrator: `core/graph.py`
+- Runtime start script: `scripts/start_app.sh`
 
-```bash
-scripts/start_docker_stack.sh
-scripts/install_agentic_stack.sh
-scripts/start_langgraph_workspace.sh
-```
-
-Or single command:
-
-```bash
-scripts/start_app.sh
-```
-
-## Local RAG Index
-
-Populate Chroma collection (`RAG_COLLECTION_NAME`, default `ray_docs`) from local markdown docs:
+## Quick Start
 
 ```bash
-./.venv/bin/python scripts/index_local_rag.py --reset
+./scripts/bootstrap.sh
+./scripts/install_agentic_stack.sh
+./scripts/start_app.sh
 ```
 
-## Chat Settings in UI
+Services:
 
-Use the Chainlit settings panel to configure:
+- API: `http://localhost:8002`
+- Web UI: `http://localhost:5173`
 
-- `Primary Model` from available aliases and known models.
-- `Custom Model` (optional) to override selection.
-- `System Prompt` for crew/fallback behavior control.
-- `Behavior Memory`, `Behavior Memory Top K`, and `Auto Capture Feedback`.
-- `Dashboard Style` for runtime telemetry visuals.
-- `LiteLLM Base URL` and `LiteLLM API Key`.
-- `Firecrawl Base URL` and optional `Firecrawl API Key`.
-- DuckDuckGo is used for URL discovery when no explicit links are provided.
-- `Enable CrewAI` switch.
-- Theme: `system`, `light`, `dark`.
+## Tests
 
-## Firecrawl Self-Host
-
-Start Firecrawl self-host stack:
+Primary app checks:
 
 ```bash
-scripts/start_firecrawl_selfhost.sh
+cd godmode-agent
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 ../.venv/bin/python -m pytest tests -q
+cd apps/web && npm run build
 ```
-
-Then set in chat settings:
-
-- `Firecrawl Base URL`: `http://localhost:3002`
-- `Firecrawl API Key`: optional/blank when self-host policy allows no auth.
 
 ## Notes
 
-- If `RAG_COLLECTION_NAME` (default `ray_docs`) does not exist, RAG tool will return a clear availability message.
-- If CrewAI execution fails, the app falls back to the local agent pipeline and still returns an artifact path.
+- `scripts/start_app.sh` prefers the root `.venv`, which is the supported Python environment for this repo.
+- If you want the current runtime architecture, read `ARCHITECTURE.md` first.

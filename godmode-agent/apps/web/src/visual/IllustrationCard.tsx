@@ -3,7 +3,14 @@ import { motion } from 'framer-motion'
 import { Image as ImageIcon, Sparkles } from 'lucide-react'
 import type { IllustrationSpec } from './types'
 
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+const API_BASE = (() => {
+  const configured = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+  if (configured) return configured
+  if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    return 'http://127.0.0.1:8002'
+  }
+  return ''
+})()
 
 function apiUrl(path: string): string {
   return API_BASE ? `${API_BASE}${path}` : path
@@ -41,8 +48,11 @@ export function IllustrationCard({ spec, raw }: { spec?: IllustrationSpec; raw: 
         if (!response.ok) {
           throw new Error(payload.detail || `Illustration request failed with status ${response.status}`)
         }
+        if (!payload.imageUrl?.trim()) {
+          throw new Error('Illustration request succeeded but returned no image.')
+        }
         if (!cancelled) {
-          setImageUrl(payload.imageUrl || '')
+          setImageUrl(payload.imageUrl)
         }
       } catch (err) {
         if (!cancelled) {
@@ -98,7 +108,15 @@ export function IllustrationCard({ spec, raw }: { spec?: IllustrationSpec; raw: 
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.35, ease: 'easeOut' }}
           >
-            <img className="illustration-media" src={imageUrl} alt={spec.title || spec.prompt} />
+            <img
+              className="illustration-media"
+              src={imageUrl}
+              alt={spec.title || spec.prompt}
+              onError={() => {
+                setImageUrl('')
+                setError('The generated image could not be displayed in the browser.')
+              }}
+            />
           </motion.div>
         )}
         {!loading && error && (

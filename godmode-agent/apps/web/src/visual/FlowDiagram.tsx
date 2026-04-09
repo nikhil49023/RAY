@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ReactFlow,
   Background,
@@ -78,18 +78,25 @@ function computeLayout(nodes: VisualNode[], edges: VisualEdge[], style: VisualSt
     levelGroups.get(level)!.push(id)
   }
 
-  const nodeWidth = 220
-  const nodeHeight = 80
-  const levelGapX = 320
-  const nodeGapY = 100
+  const nodeWidth = 248
+  const levelGapX = 340
+  const nodeGapY = 36
 
   for (const [level, ids] of levelGroups) {
-    const totalHeight = ids.length * (nodeHeight + nodeGapY)
+    const orderedIds = [...ids].sort((a, b) => {
+      const aNode = nodeMap.get(a)
+      const bNode = nodeMap.get(b)
+      return (bNode?.weight || 0) - (aNode?.weight || 0)
+    })
+    const nodeHeights = orderedIds.map((id) => nodeMap.get(id)?.description ? 112 : 92)
+    const totalHeight = nodeHeights.reduce((sum, height) => sum + height, 0) + Math.max(0, orderedIds.length - 1) * nodeGapY
     const startY = -totalHeight / 2
-    ids.forEach((id, index) => {
+    let currentY = startY
+    orderedIds.forEach((id, index) => {
       const node = nodeMap.get(id)!
       const x = level * levelGapX
-      const y = startY + index * (nodeHeight + nodeGapY)
+      const nodeHeight = node.description ? 112 : 92
+      const y = currentY
       const groupColor = GROUP_COLORS[node.type] || GROUP_COLORS.concept
       const entranceDelay = (level * 0.18) + (index * 0.08)
 
@@ -115,8 +122,10 @@ function computeLayout(nodes: VisualNode[], edges: VisualEdge[], style: VisualSt
         style: {
           width: nodeWidth,
           minWidth: nodeWidth,
+          minHeight: nodeHeight,
         },
       })
+      currentY += nodeHeight + nodeGapY
     })
   }
 
@@ -159,6 +168,12 @@ export function FlowDiagram({ spec, raw, interactive = true }: FlowDiagramProps)
   const [rfNodes, setRfNodes] = useState<Node[]>(flowNodes)
   const [rfEdges, setRfEdges] = useState<Edge[]>(flowEdges)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
+
+  useEffect(() => {
+    setRfNodes(flowNodes)
+    setRfEdges(flowEdges)
+    setSelectedNode(null)
+  }, [flowEdges, flowNodes])
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setRfNodes((nds) => applyNodeChanges(changes, nds)),
@@ -207,9 +222,13 @@ export function FlowDiagram({ spec, raw, interactive = true }: FlowDiagramProps)
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
+          fitViewOptions={{ padding: 0.24 }}
           minZoom={0.2}
           maxZoom={2}
+          nodesDraggable={interactive}
+          elementsSelectable={interactive}
+          nodesConnectable={false}
+          panOnDrag={interactive}
           defaultEdgeOptions={{
             markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
           }}

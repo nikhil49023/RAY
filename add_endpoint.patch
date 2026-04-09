@@ -1,0 +1,32 @@
+--- godmode-agent/apps/api/server.py
++++ godmode-agent/apps/api/server.py
+@@ -37,2 +37,6 @@
++class FeedbackRequest(BaseModel):
++    text: str
++    type: str = "correction"
++
+ class PromptRequest(BaseModel):
+     prompt: str
+@@ -1223,2 +1227,19 @@
+ 
++@app.post("/api/feedback")
++async def save_feedback(body: FeedbackRequest):
++    try:
++        from services.memory.ollama_embedder import embedder
++        from services.memory.stores.qdrant_index import QdrantIndex
++        import time
++        behavior_index = QdrantIndex(collection_name="behavior_index")
++        
++        vector = embedder.embed_query(body.text)
++        point_id = int(time.time_ns() % 9_223_372_036_854_775_000)
++        behavior_index.upsert(
++            ids=[point_id],
++            vectors=[vector],
++            payloads=[{"rule": body.text, "type": body.type, "timestamp": time.time()}],
++        )
++        return {"status": "success", "message": "Feedback saved to behavior_index"}
++    except Exception as e:
++        logger.error(f"Failed to save feedback: {e}")
++        raise HTTPException(status_code=500, detail=str(e))
++
+ if __name__ == "__main__":

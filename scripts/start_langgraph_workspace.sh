@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-echo "RAY - God Mode Agent (LangGraph) Quick Start"
-echo "============================================="
+echo "RAY - God Mode Agent Quick Start"
+echo "================================"
 echo ""
 
 # Check if virtual environment exists
@@ -31,8 +31,8 @@ sleep 5
 # Run tests
 echo ""
 echo "Running tests..."
-python tests/test_memory_promotion.py
-python tests/test_verifier_coverage.py
+.venv/bin/python tests/test_memory_promotion.py
+.venv/bin/python tests/test_verifier_coverage.py
 
 # Start the app
 echo ""

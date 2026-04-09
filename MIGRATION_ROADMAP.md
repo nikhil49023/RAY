@@ -1,5 +1,7 @@
 # RAY → God Mode Agent: LangGraph Migration Roadmap
 
+> Historical migration document. The current runtime app is `godmode-agent` with a FastAPI backend and React/Vite frontend. References to Chainlit in this file describe an earlier prototype path.
+
 ## Overview
 Migrate from CrewAI to LangGraph while keeping LiteLLM, Chainlit, and local-first architecture.
 

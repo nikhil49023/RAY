@@ -12,19 +12,19 @@ from agents.config import settings
 
 class LangGraphOrchestrator:
     """LangGraph-based orchestrator for RAY."""
-    
+
     def __init__(self):
         self.graph = build_graph()
-    
+
     def run(
         self,
         query: str,
         session_id: str = "default",
         model_name: str = None,
-        stream_callback = None
+        stream_callback=None,
     ) -> dict:
         """Execute graph and return result."""
-        
+
         # Initialize state
         initial_state: AgentState = {
             "user_query": query,
@@ -44,13 +44,14 @@ class LangGraphOrchestrator:
             "artifact_path": "",
             "model_name": model_name or settings.litellm_model,
             "checkpoint_mode": "async",
-            "error": ""
+            "retrieval_attempts": 0,
+            "error": "",
         }
-        
+
         # Execute graph
         try:
             config = {"configurable": {"thread_id": session_id}}
-            
+
             # Stream execution if callback provided
             if stream_callback:
                 for event in self.graph.stream(initial_state, config):
@@ -58,7 +59,7 @@ class LangGraphOrchestrator:
                     final_state = event
             else:
                 final_state = self.graph.invoke(initial_state, config)
-            
+
             # Extract result
             return {
                 "status": "success",
@@ -68,9 +69,9 @@ class LangGraphOrchestrator:
                 "evidence": final_state.get("evidence", []),
                 "applied_rules": final_state.get("applied_rules", []),
                 "verification_status": final_state.get("verification_status", ""),
-                "error": final_state.get("error", "")
+                "error": final_state.get("error", ""),
             }
-            
+
         except Exception as e:
             return {
                 "status": "error",
@@ -80,5 +81,5 @@ class LangGraphOrchestrator:
                 "evidence": [],
                 "applied_rules": [],
                 "verification_status": "FAILED",
-                "error": str(e)
+                "error": str(e),
             }

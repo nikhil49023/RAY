@@ -1,5 +1,7 @@
 # Complete LangGraph Migration: File Tree
 
+> Historical migration snapshot. The current primary app lives under `godmode-agent/`; `apps/ui-chainlit/` is not the main runtime surface.
+
 ## Implementation Files (35 core files)
 
 ```

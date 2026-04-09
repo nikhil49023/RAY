@@ -12,7 +12,6 @@ services:
       - RAY_ENV=development
       - GROQ_API_KEY=${GROQ_API_KEY:-your_groq_key_here}
       - SARVAM_API_KEY=${SARVAM_API_KEY:-your_sarvam_key_here}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-your_openrouter_key_here}
     command: >
       sh -c "pip install -r /app/requirements.txt &&
              python -m uvicorn apps.api.server:app --host 0.0.0.0 --port 8002 --reload"

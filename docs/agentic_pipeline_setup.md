@@ -1,5 +1,7 @@
 # Agentic CrewAI + Chainlit Workspace
 
+> Historical setup note. The current primary app is `godmode-agent` with a FastAPI backend and React/Vite frontend. This document describes an older Chainlit-first setup.
+
 This repository is now configured as a Chainlit-first autonomous workspace.
 
 ## Stack Layout

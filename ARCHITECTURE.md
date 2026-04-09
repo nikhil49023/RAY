@@ -1,313 +1,68 @@
-# RAY God Mode Agent: System Architecture
+# RAY Architecture
 
-## High-Level Flow
+## Current Runtime
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Chainlit UI                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
-│  │ScoreCard │  │Evidence  │  │Timeline  │  │Dashboard │       │
-│  │          │  │Table     │  │          │  │Panel     │       │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘       │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                   LangGraph Orchestrator                         │
-│                                                                   │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                    State Machine                         │   │
-│  │                                                           │   │
-│  │  [Intent Router] → [Memory Prefetch] → [Planner]       │   │
-│  │         ↓                                    ↓           │   │
-│  │         ↓              ┌──────────────┐     ↓           │   │
-│  │         ↓              │  Doc RAG     │ ←───┘           │   │
-│  │         ↓              └──────────────┘                 │   │
-│  │         ↓              ┌──────────────┐                 │   │
-│  │         ↓              │  Web RAG     │                 │   │
-│  │         ↓              └──────────────┘                 │   │
-│  │         ↓                      ↓                         │   │
-│  │         ↓              [Verifier] ←──────┐              │   │
-│  │         ↓                      ↓          │              │   │
-│  │         ↓              PASSED? ─── NO ────┘              │   │
-│  │         ↓                      │                         │   │
-│  │         ↓                     YES                        │   │
-│  │         ↓                      ↓                         │   │
-│  │         ↓              [Composer]                        │   │
-│  │         ↓                      ↓                         │   │
-│  │         └──────────→ [Memory Writeback]                 │   │
-│  │                                                           │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  Checkpoint: SQLite (data/checkpoints/graph.db)                 │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                      Memory System (Mem0)                        │
-│                                                                   │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
-│  │ Docs Index   │  │Behavior Index│  │Execution Idx │         │
-│  │              │  │              │  │              │         │
-│  │ ray_docs     │  │ ray_behavior │  │ ray_execution│         │
-│  │              │  │              │  │              │         │
-│  │ Priority: 2  │  │ Priority: 1  │  │ Priority: 3  │         │
-│  └──────────────┘  └──────────────┘  └──────────────┘         │
-│                                                                   │
-│  Embeddings: Ollama (nomic-embed-text)                          │
-│  Storage: ChromaDB (local + remote)                             │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                    External Services                             │
-│                                                                   │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
-│  │  LiteLLM     │  │  Firecrawl   │  │  Ollama      │         │
-│  │  Router      │  │  Scraper     │  │  Embeddings  │         │
-│  │              │  │              │  │              │         │
-│  │ :4000        │  │ :3002        │  │ :11434       │         │
-│  └──────────────┘  └──────────────┘  └──────────────┘         │
-│                                                                   │
-│  Fallback Chain: premium-thinker → llama-3.3-70b →             │
-│                  openrouter/free → deepseek-r1:8b               │
-└─────────────────────────────────────────────────────────────────┘
+The current app is `godmode-agent`, not the older Chainlit prototype.
+
+```text
+React/Vite Web UI (godmode-agent/apps/web)
+                |
+                v
+FastAPI API (godmode-agent/apps/api/server.py)
+                |
+                v
+LangGraph Orchestrator (godmode-agent/services/orchestrator/graph.py)
+                |
+                +--> LiteLLM-routed chat/reasoning
+                +--> DuckDuckGo + Firecrawl research
+                +--> Qdrant execution + behavioral memory
+                +--> Ollama embeddings
 ```
 
-## Node Execution Detail
+## Main Components
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 1. Intent Router                                                 │
-│    Input:  user_query                                            │
-│    Output: intent (chat|research|coding|dashboard|artifact)     │
-│            checkpoint_mode (sync|async)                          │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ 2. Memory Prefetch                                               │
-│    Input:  user_query                                            │
-│    Action: Query behavior_index for top-4 rules                 │
-│    Output: behavioral_rules, applied_rules                      │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ 3. Planner                                                       │
-│    Input:  user_query, intent, behavioral_rules                 │
-│    Action: LLM generates structured plan                        │
-│    Output: plan, subtasks                                       │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ 4. Doc RAG (parallel)                                            │
-│    Input:  user_query                                            │
-│    Action: Query docs_index (ray_docs collection)               │
-│    Output: doc_rag_results                                      │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ 5. Web RAG (parallel)                                            │
-│    Input:  user_query                                            │
-│    Action: Extract URLs, scrape via Firecrawl                   │
-│    Output: web_rag_results                                      │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ 6. Verifier                                                      │
-│    Input:  doc_rag_results, web_rag_results, intent             │
-│    Action: Build evidence objects, check coverage               │
-│    Output: evidence[], verification_status (PASSED|FAILED)     │
-│                                                                   │
-│    Rules:                                                        │
-│    - research intent: requires ≥2 evidence                      │
-│    - artifact intent: requires ≥1 evidence                      │
-│    - factual query: requires ≥1 evidence                        │
-│    - chat intent: no requirement                                │
-│                                                                   │
-│    If FAILED: loop back to doc_rag                              │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ 7. Composer                                                      │
-│    Input:  evidence, behavioral_rules, user_query               │
-│    Action: LLM generates answer ONLY from evidence              │
-│    Output: final_answer                                         │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ 8. Memory Writeback                                              │
-│    Input:  user_query, final_answer                             │
-│    Action: Extract preferences, apply promotion rules           │
-│    Output: (persists to behavior_index)                         │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Web App
 
-## Memory Promotion Flow
+- React 19 + Vite frontend in `godmode-agent/apps/web`
+- Talks to the FastAPI backend at `/api/*`
+- Renders chat, settings, artifacts, research sessions, and visual outputs
 
-```
-User Query / Answer
-        ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Extract Preferences                                              │
-│                                                                   │
-│ Signals:                                                         │
-│ ✓ "always", "never", "prefer", "avoid"                          │
-│ ✓ "my style", "for me", "from now on"                           │
-│ ✗ "today", "right now", "currently"                             │
-└─────────────────────────────────────────────────────────────────┘
-        ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Classify Memory Type                                             │
-│                                                                   │
-│ - Preference: tone, formatting, UI, explanation                 │
-│ - Constraint: budget, privacy, hardware, latency                │
-│ - Correction: mistakes to avoid                                 │
-│ - Project State: active repo, objective                         │
-└─────────────────────────────────────────────────────────────────┘
-        ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Promotion Decision                                               │
-│                                                                   │
-│ Promote to user_memory if:                                      │
-│ ✓ Length ≥ 15 chars                                             │
-│ ✓ Contains persistent signals                                   │
-│ ✓ No ephemeral signals                                          │
-│                                                                   │
-│ Otherwise: discard or store in session_memory                   │
-└─────────────────────────────────────────────────────────────────┘
-        ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Persist to Chroma                                                │
-│                                                                   │
-│ Collection: ray_behavior                                         │
-│ Embedding: Ollama (nomic-embed-text)                            │
-│ Fallback: JSONL (data/memory/behavior_rules.jsonl)             │
-└─────────────────────────────────────────────────────────────────┘
-```
+### API Server
 
-## Artifact Generation Flow
+- FastAPI app in `godmode-agent/apps/api/server.py`
+- Persists threads, artifacts, and research sessions under `godmode-agent/data/`
+- Exposes settings, models, chat, artifact, thread, and research endpoints
+- Supports both `langgraph` and `codex_cli` agent runtimes via persisted runtime settings
 
-```
-Intent: artifact
-        ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Planner determines artifact type                                 │
-│ - PDF: report, document                                          │
-│ - DOCX: editable document                                        │
-│ - XLSX/CSV: data export                                          │
-│ - HTML: chart, dashboard                                         │
-└─────────────────────────────────────────────────────────────────┘
-        ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Composer generates structured content                            │
-│ Output: typed object (not raw text)                             │
-└─────────────────────────────────────────────────────────────────┘
-        ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Worker processes structured content                              │
-│                                                                   │
-│ PDFWorker:   content → ReportLab → .pdf                         │
-│ DOCXWorker:  content → python-docx → .docx                      │
-│ XLSXWorker:  data → csv → .csv                                  │
-│ ChartWorker: data → Chart.js → .html                            │
-└─────────────────────────────────────────────────────────────────┘
-        ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Save to data/artifacts/                                          │
-│ Return: artifact_path                                            │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Orchestration
 
-## Reliability Mechanisms
+- Primary orchestrator lives in `godmode-agent/services/orchestrator/graph.py`
+- Flow is summarizer -> memory_prefetch -> intent_router -> planner -> optional web research -> composer -> memory_writeback
+- `langgraph` is the default backend
+- `codex_cli` is an alternate runtime selected through settings
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ Retry Policy                                                     │
-│                                                                   │
-│ Max retries: 3                                                   │
-│ Backoff: exponential (2^attempt seconds)                        │
-│                                                                   │
-│ Retryable errors:                                                │
-│ - timeout                                                        │
-│ - rate limit (429)                                               │
-│ - connection error                                               │
-│ - service unavailable (503)                                      │
-└─────────────────────────────────────────────────────────────────┘
+### Memory
 
-┌─────────────────────────────────────────────────────────────────┐
-│ Fallback Policy                                                  │
-│                                                                   │
-│ Model chain:                                                     │
-│ 1. premium-thinker (LiteLLM alias)                              │
-│ 2. llama-3.3-70b-versatile (Groq)                               │
-│ 3. openrouter/free (OpenRouter)                                 │
-│ 4. deepseek-r1:8b (Ollama local)                                │
-│                                                                   │
-│ Automatic failover on:                                           │
-│ - Rate limit                                                     │
-│ - Timeout                                                        │
-│ - Model unavailable                                              │
-└─────────────────────────────────────────────────────────────────┘
+- Qdrant-backed semantic memory under `godmode-agent/services/memory/`
+- Behavioral memory, execution history, and retrieval helpers are used by the primary app
+- Top-level Chroma-backed memory under `services/memory/` remains part of the older prototype path
 
-┌─────────────────────────────────────────────────────────────────┐
-│ Checkpointing                                                    │
-│                                                                   │
-│ Sync mode (research, artifact):                                 │
-│ - Write to SQLite after each node                               │
-│ - Resume from last checkpoint on failure                        │
-│                                                                   │
-│ Async mode (chat, coding, dashboard):                           │
-│ - Buffer in memory                                               │
-│ - Write on completion                                            │
-│ - Faster execution                                               │
-└─────────────────────────────────────────────────────────────────┘
-```
+## Repo Split
 
-## Hardware Allocation
+### Primary
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 4GB VRAM Budget                                                  │
-│                                                                   │
-│ Ollama (local):                                                  │
-│ - nomic-embed-text: ~500MB                                      │
-│ - deepseek-r1:8b (fallback): ~3.5GB                             │
-│                                                                   │
-│ Reserved for:                                                    │
-│ ✓ Embeddings (docs, behavior, execution)                        │
-│ ✓ Memory extraction                                              │
-│ ✓ Retrieval helpers                                              │
-│                                                                   │
-│ NOT used for:                                                    │
-│ ✗ Main reasoning (via LiteLLM → free providers)                │
-│ ✗ Heavy inference                                                │
-└─────────────────────────────────────────────────────────────────┘
-```
+- `godmode-agent/`: production-facing FastAPI + React application
+- `scripts/start_app.sh`: supported launcher
+- root `.venv`: supported Python environment for repo scripts and tests
 
-## Data Flow Summary
+### Prototype / Migration Artifacts
 
-```
-User Query
-    ↓
-[Intent + Memory] → Behavioral rules injected
-    ↓
-[Planner] → Structured plan with subtasks
-    ↓
-[RAG Parallel] → Evidence collection
-    ↓
-[Verifier] → Coverage check (retry if failed)
-    ↓
-[Composer] → Evidence-only answer
-    ↓
-[Memory Writeback] → Extract + persist preferences
-    ↓
-[UI Render] → Inline elements + final answer
-```
+- `apps/ui-chainlit/`: older UI prototype
+- top-level `services/`: earlier LangGraph prototype
+- top-level docs describing Chainlit or inline JSX elements should be read as migration history unless updated to say otherwise
 
-## Key Metrics
+## Operational Notes
 
-- **Nodes**: 8
-- **Collections**: 3 (docs, behavior, execution)
-- **UI Elements**: 5 (ScoreCard, EvidenceTable, Timeline, Dashboard, Badge)
-- **Workers**: 4 (PDF, DOCX, XLSX, Chart)
-- **Tests**: 3 suites (graph, memory, verifier)
-- **Fallback Models**: 4
-- **Max Retries**: 3
-- **Checkpoint Modes**: 2 (sync, async)
+- Prefer `./scripts/bootstrap.sh` then `./scripts/install_agentic_stack.sh` before running the app
+- `scripts/start_app.sh` starts Docker services, FastAPI on `8002`, and Vite on `5173`
+- The repo currently supports hybrid usage of LangGraph orchestration plus lower-level LangChain integrations inside nodes and helpers

@@ -7,12 +7,12 @@ APP_DIR="$ROOT_DIR/godmode-agent"
 echo "Starting core backend services (Docker)..."
 "$ROOT_DIR/scripts/start_docker_stack.sh"
 
-export PYTHONPATH="$APP_DIR"
+export PYTHONPATH="$ROOT_DIR:$APP_DIR"
 
-if [ -f "$APP_DIR/venv/bin/python" ]; then
-    PYTHON_CMD="$APP_DIR/venv/bin/python"
-elif [ -f "$ROOT_DIR/.venv/bin/python" ]; then
+if [ -f "$ROOT_DIR/.venv/bin/python" ]; then
     PYTHON_CMD="$ROOT_DIR/.venv/bin/python"
+elif [ -f "$APP_DIR/venv/bin/python" ]; then
+    PYTHON_CMD="$APP_DIR/venv/bin/python"
 else
     PYTHON_CMD="python3"
 fi

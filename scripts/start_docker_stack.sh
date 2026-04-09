@@ -12,7 +12,7 @@ fi
 # Core services only (Firecrawl is optional via --profile firecrawl)
 # To include Firecrawl: docker compose --profile firecrawl up -d
 echo "Starting core Docker services (LiteLLM, ChromaDB, Qdrant)..."
-docker compose up -d litellm chromadb qdrant
+docker start qdrant || docker run -d -p 6333:6333 --name qdrant qdrant/qdrant
 
 echo ""
 echo "=== Core Services ==="

@@ -1,0 +1,45 @@
+{
+  "type": "diagram",
+  "diagramType": "system_architecture",
+  "title": "VR Classroom AI Agent System",
+  "subtitle": "Node-based Workflow Powered by React Flow",
+  "nodes": [
+    {"id": "vr_client", "type": "input", "label": "VR Client", "group": "frontend", "description": "Student's VR Headset capturing voice/motion", "weight": 2},
+    {"id": "gateway", "type": "system", "label": "API Gateway", "group": "backend", "description": "WebSocket interface for realtime events", "weight": 1},
+    {"id": "stt_service", "type": "process", "label": "Speech-to-Text", "group": "ai_services", "description": "Transcribes student speech", "weight": 1},
+    {"id": "intent_router", "type": "decision", "label": "Intent Router", "group": "orchestration", "description": "Routes to Math, History, etc.", "weight": 2},
+    {"id": "agent_math", "type": "function", "label": "Math Specialist AI", "group": "agents", "description": "Solves math queries", "weight": 1},
+    {"id": "agent_history", "type": "function", "label": "History Specialist AI", "group": "agents", "description": "Retrieves historical contexts", "weight": 1},
+    {"id": "memory_db", "type": "data", "label": "Vector DB (Qdrant)", "group": "data", "description": "Stores student progress", "weight": 1},
+    {"id": "tts_service", "type": "process", "label": "Text-to-Speech", "group": "ai_services", "description": "Generates natural voice", "weight": 1},
+    {"id": "avatar_anim", "type": "process", "label": "Avatar Animation", "group": "ai_services", "description": "Generates lip-sync and gestures", "weight": 1},
+    {"id": "vr_render", "type": "output", "label": "VR Teacher Render", "group": "frontend", "description": "Displays response in VR", "weight": 2}
+  ],
+  "edges": [
+    {"source": "vr_client", "target": "gateway", "label": "stream", "type": "smoothstep", "animated": true},
+    {"source": "gateway", "target": "stt_service", "label": "audio", "type": "default", "animated": true},
+    {"source": "stt_service", "target": "intent_router", "label": "text", "type": "smoothstep"},
+    {"source": "intent_router", "target": "agent_math", "label": "if math", "type": "smoothstep"},
+    {"source": "intent_router", "target": "agent_history", "label": "if history", "type": "smoothstep"},
+    {"source": "intent_router", "target": "memory_db", "label": "context", "type": "dashed", "animated": true},
+    {"source": "memory_db", "target": "agent_math", "label": "memory", "type": "dashed"},
+    {"source": "memory_db", "target": "agent_history", "label": "memory", "type": "dashed"},
+    {"source": "agent_math", "target": "tts_service", "label": "response", "type": "smoothstep", "animated": true},
+    {"source": "agent_history", "target": "tts_service", "label": "response", "type": "smoothstep", "animated": true},
+    {"source": "tts_service", "target": "avatar_anim", "label": "audio sync", "type": "smoothstep"},
+    {"source": "avatar_anim", "target": "gateway", "label": "payload", "type": "smoothstep", "animated": true},
+    {"source": "gateway", "target": "vr_render", "label": "push", "type": "smoothstep", "animated": true}
+  ],
+  "style": {
+    "theme": "modern-3d-education",
+    "layout": "flowchart",
+    "edgeStyle": "gradient",
+    "nodeShape": "card",
+    "animation": "moderate"
+  },
+  "legend": [
+    {"label": "Client/Frontend", "color": "#6EE7B7"},
+    {"label": "AI Agents", "color": "#A78BFA"},
+    {"label": "Data", "color": "#38BDF8"}
+  ]
+}

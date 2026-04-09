@@ -1,5 +1,7 @@
 # 🎉 BUILD COMPLETE: RAY → God Mode Agent (LangGraph)
 
+> Historical build summary. The current primary runtime is the FastAPI + React/Vite app under `godmode-agent/`. Mentions of Chainlit below refer to earlier prototype work.
+
 ## What Was Delivered
 
 **Complete production-grade migration from CrewAI to LangGraph** following the exact blueprint for a "Claude-like but free/local-first" autonomous agent.

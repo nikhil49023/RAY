@@ -1,5 +1,7 @@
 # LangGraph Migration: Implementation Summary
 
+> Historical implementation note. The current primary runtime is `godmode-agent`; Chainlit references in this document describe the earlier prototype layer.
+
 ## What Was Built
 
 Complete migration from CrewAI to LangGraph following the exact blueprint for a production-grade "God Mode" agent.

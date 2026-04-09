@@ -1,5 +1,7 @@
 # LangGraph Migration: Deployment Checklist
 
+> Historical deployment checklist. The current primary app is `godmode-agent`, served by FastAPI on `8002` and Vite on `5173`.
+
 ## Pre-Deployment
 
 ### Environment Setup

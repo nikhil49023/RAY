@@ -21,3 +21,4 @@ langgraph-checkpoint-sqlite>=1.0.0
 
 # Memory and vector store
 chromadb>=0.4.0
+qdrant-client>=1.10.1

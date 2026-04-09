@@ -48,7 +48,7 @@ interface CustomNodeData {
 
 export const CustomNode = memo(({ data }: NodeProps) => {
   const typedData = data as unknown as CustomNodeData
-  const { label, nodeType, color, theme, entranceDelay = 0 } = typedData
+  const { label, nodeType, color, theme, entranceDelay = 0, description } = typedData
   const Icon = NODE_TYPE_ICONS[nodeType] || Layers
 
   return (
@@ -69,7 +69,7 @@ export const CustomNode = memo(({ data }: NodeProps) => {
         border: `1px solid ${theme.nodeBorder}`,
         borderRadius: 12,
         padding: "12px 16px",
-        minWidth: 200,
+        minWidth: 220,
         boxShadow: theme.shadow,
         backdropFilter: "blur(8px)",
       }}
@@ -95,12 +95,13 @@ export const CustomNode = memo(({ data }: NodeProps) => {
           <div
             style={{
               color: theme.text,
-              fontWeight: 500,
+              fontWeight: 600,
               fontSize: 13,
-              lineHeight: 1.3,
-              whiteSpace: "nowrap",
+              lineHeight: 1.35,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
               overflow: "hidden",
-              textOverflow: "ellipsis",
             }}
           >
             {label}
@@ -117,6 +118,23 @@ export const CustomNode = memo(({ data }: NodeProps) => {
           >
             {nodeType}
           </div>
+          {description && (
+            <div
+              style={{
+                color: theme.textSecondary,
+                fontSize: 11,
+                lineHeight: 1.45,
+                marginTop: 6,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                maxWidth: 170,
+              }}
+            >
+              {description}
+            </div>
+          )}
         </div>
       </div>
       <Handle type="source" position={Position.Right} style={{ background: color, width: 8, height: 8, border: "2px solid rgba(13, 13, 18, 0.8)" }} />

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Installing LangGraph migration dependencies..."
+echo "Installing LangGraph runtime dependencies..."
 
 # Check if python3-venv is available
 if ! python3 -m venv --help &>/dev/null; then
@@ -21,14 +21,15 @@ source .venv/bin/activate
 # Upgrade pip
 pip install --upgrade pip
 
-# Install LangGraph dependencies
+# Install app and LangGraph dependencies
+pip install -r requirements.txt
 pip install -r requirements-langgraph.txt
 
 # Create checkpoint directory
 mkdir -p data/checkpoints
 
 # Initialize memory collections
-echo "📚 Initializing memory collections..."
+echo "Initializing memory collections..."
 python3 << 'EOF'
 import sys
 from pathlib import Path
@@ -48,9 +49,9 @@ except Exception as e:
 EOF
 
 echo ""
-echo "✅ LangGraph migration setup complete!"
+echo "LangGraph runtime setup complete."
 echo ""
 echo "Next steps:"
 echo "  1. Start services: ./scripts/start_docker_stack.sh"
-echo "  2. Run tests: python tests/test_graph_execution.py"
-echo "  3. Start Chainlit with LangGraph: ./scripts/start_chainlit.sh"
+echo "  2. Run tests: .venv/bin/python tests/test_graph_execution.py"
+echo "  3. Start the FastAPI + Vite app: ./scripts/start_app.sh"

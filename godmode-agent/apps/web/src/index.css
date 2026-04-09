@@ -1911,7 +1911,7 @@ textarea {
    ═══════════════════════════════════════════════════════════════════ */
 
 body {
-  background: #0f1115;
+  background: var(--surface-primary);
   color: #eceff4;
 }
 
@@ -2029,7 +2029,7 @@ body::before,
 }
 
 .topbar {
-  background: #0f1115;
+  background: var(--surface-primary);
 }
 
 .topbar-label,
@@ -3215,6 +3215,9 @@ body.is-resizing {
 .flow-diagram-canvas {
   height: 520px;
   position: relative;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.03), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0));
 }
 
 .flow-diagram-canvas .react-flow__background {
@@ -3370,6 +3373,15 @@ body.is-resizing {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
 }
 
+.flow-diagram-canvas .react-flow__node.selected .custom-node {
+  border-color: rgba(110, 231, 183, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(110, 231, 183, 0.18), 0 12px 32px rgba(0, 0, 0, 0.42) !important;
+}
+
+.flow-diagram-canvas .react-flow__attribution {
+  display: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    VISUAL INTELLIGENCE — Adaptive Display
    ═══════════════════════════════════════════════════════════════════ */
@@ -3475,4 +3487,41 @@ body.is-resizing {
 
 .illustration-error strong {
   color: var(--text);
+}
+
+/* ── UI Polish ─────────────────────────────────────────────── */
+.main {
+  background: radial-gradient(circle at top left, rgba(167, 139, 250, 0.03) 0%, transparent 40%),
+              radial-gradient(circle at bottom right, rgba(110, 231, 183, 0.03) 0%, transparent 40%);
+}
+
+.user-body {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  border-radius: 20px 20px 4px 20px;
+  background: rgba(167, 139, 250, 0.05);
+  border: 1px solid rgba(167, 139, 250, 0.1);
+}
+
+.assistant-body {
+  border-radius: 20px 20px 20px 4px;
+  background: rgba(255, 255, 255, 0.01);
+  padding: 16px 20px;
+  border: 1px solid var(--border-subtle);
+}
+
+.message-avatar {
+  border-radius: 50%;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+.input-box {
+  background: rgba(22, 22, 31, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(110, 231, 183, 0.2);
+}
+
+.send-btn {
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  color: var(--surface-primary);
+  border-radius: 50%;
 }

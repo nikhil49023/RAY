@@ -47,9 +47,9 @@ if str(ROOT_DIR) not in sys.path:
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from services.orchestrator.graph import graph
-from services.orchestrator.llm_factory import LLMFactory
-from services.orchestrator.runtime import (
+from core.graph import graph
+from core.llm_factory import LLMFactory
+from core.runtime import (
     apply_runtime_settings,
     get_agent_runtime_config,
     load_user_settings,
@@ -372,6 +372,10 @@ class MessageContent(BaseModel):
             raise ValueError("Message content cannot be empty")
         return v.strip()
 
+
+class FeedbackRequest(BaseModel):
+    text: str
+    type: str = "correction"
 
 class ChatRequest(BaseModel):
     messages: List[MessageContent] = Field(
@@ -1149,7 +1153,60 @@ async def generate_illustration(body: IllustrationRequest):
     }
 
 
-if __name__ == "__main__":
+@app.post("/api/feedback")
+async def save_feedback(body: FeedbackRequest):
+    try:
+        from services.memory.ollama_embedder import embedder
+        from services.memory.stores.qdrant_index import QdrantIndex
+        import time
+        behavior_index = QdrantIndex(collection_name="behavior_index")
+        
+        vector = embedder.embed_query(body.text)
+        point_id = int(time.time_ns() % 9_223_372_036_854_775_000)
+        behavior_index.upsert(
+            ids=[point_id],
+            vectors=[vector],
+            payloads=[{"rule": body.text, "type": body.type, "timestamp": time.time()}],
+        )
+        return {"status": "success", "message": "Feedback saved to behavior_index"}
+    except Exception as e:
+        logger.error(f"Failed to save feedback: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/skills")
+async def list_skills():
+    try:
+        from core.skills import AVAILABLE_SKILLS
+        return {
+            "skills": [
+                {"name": s.name, "description": s.description}
+                for s in AVAILABLE_SKILLS
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Failed to list skills: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SkillExecutionRequest(BaseModel):
+    name: str
+    prompt: str
+    params: dict = {}
+
+@app.post("/api/skills/execute")
+async def execute_skill(body: SkillExecutionRequest):
+    try:
+        from core.skills import get_skill
+        skill = get_skill(body.name)
+        if not skill:
+            raise HTTPException(status_code=404, detail="Skill not found")
+        
+        result = skill.execute(prompt=body.prompt, **body.params)
+        return {"status": "success", "result": result}
+    except Exception as e:
+        logger.error(f"Failed to execute skill: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     import uvicorn
 
+if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)
