@@ -6,7 +6,6 @@ import json
 
 from agents.monitoring import (
     query_groq_credit,
-    query_openrouter_credit,
     query_sarvam_credit,
     read_usage,
     summarize_usage,
@@ -23,7 +22,6 @@ def main() -> None:
     usage = summarize_usage(records)
     credits = {
         "groq": query_groq_credit(),
-        "openrouter": query_openrouter_credit(),
         "sarvam": query_sarvam_credit(),
     }
 

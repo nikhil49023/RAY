@@ -48,11 +48,16 @@ async def _crawl_urls_async(urls: List[str]) -> List[Dict[str, Any]]:
             try:
                 logger.info(f"Crawling URL: {url}")
                 result = await crawler.arun(url=url, config=DEFAULT_CRAWLER_CONFIG)
+                markdown = (
+                    getattr(result, "markdown_raw", None)
+                    or getattr(result, "markdown", None)
+                    or ""
+                )
 
-                if result.success and result.markdown:
+                if result.success and markdown:
                     results.append(
                         {
-                            "content": result.markdown_raw or result.markdown,
+                            "content": markdown,
                             "url": url,
                             "source": "crawl4ai",
                             "title": getattr(result, "title", "")
@@ -85,7 +90,7 @@ def web_rag(state: AgentState) -> AgentState:
     # If no URLs in query, search with DuckDuckGo
     if not urls:
         try:
-            from services.agent_backends import MultiProviderClients
+            from agents.api_handlers import MultiProviderClients
 
             client = MultiProviderClients()
             search_results = client.search_web(query, max_results=3)

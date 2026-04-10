@@ -178,7 +178,6 @@ class LLMFactory:
             return bool(os.getenv("GROQ_API_KEY"))
         if prefix == "sarvam":
             return bool(os.getenv("SARVAM_API_KEY"))
-            return bool(os.getenv("OPENROUTER_API_KEY"))
         if prefix == "ollama":
             return True
         return False
@@ -257,16 +256,14 @@ class LLMFactory:
                 temperature=temperature,
             )
 
-        # ── OpenRouter / fallback ─────────────────────────────────────────
-        from langchain_openai import ChatOpenAI
-        key = os.getenv("OPENROUTER_API_KEY", "")
+        # ── Default / fallback ─────────────────────────────────────────
+        from langchain_groq import ChatGroq
+        key = os.getenv("GROQ_API_KEY", "")
         if not key:
-            logger.error("OPENROUTER_API_KEY not configured")
-            raise ValueError("OPENROUTER_API_KEY not set. Add it to .env or Settings.")
-        logger.debug(f"Configuring OpenRouter model: {actual}")
-        return ChatOpenAI(
+            raise ValueError("GROQ_API_KEY not set.")
+        return ChatGroq(
             api_key=key,
-            model=actual,
+            model=model_id.split("/", 1)[1] if "/" in model_id else model_id,
             temperature=temperature,
             max_tokens=max_tokens,
         )

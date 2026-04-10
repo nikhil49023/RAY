@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 import html
+import json
 import re
 
 import requests
@@ -33,7 +34,9 @@ class SkillToolkit:
         value = re.sub(r"[^a-zA-Z0-9]+", "-", name.strip().lower()).strip("-")
         return value or "artifact"
 
-    def generate_document(self, title: str, markdown: str, output_format: str = "docx") -> Dict[str, Any]:
+    def generate_document(
+        self, title: str, markdown: str, output_format: str = "docx"
+    ) -> Dict[str, Any]:
         slug = self._slugify(title)
         if output_format.lower() == "docx":
             path = self.output_dir / f"{slug}.docx"
@@ -56,18 +59,30 @@ class SkillToolkit:
             path = self.output_dir / f"{slug}.pdf"
             document = SimpleDocTemplate(str(path), pagesize=letter)
             styles = getSampleStyleSheet()
-            story: List[Any] = [Paragraph(html.escape(title), styles["Title"]), Spacer(1, 12)]
+            story: List[Any] = [
+                Paragraph(html.escape(title), styles["Title"]),
+                Spacer(1, 12),
+            ]
             for line in markdown.splitlines():
                 stripped = line.strip()
                 if not stripped:
                     story.append(Spacer(1, 6))
                     continue
                 if stripped.startswith("# "):
-                    story.append(Paragraph(html.escape(stripped[2:].strip()), styles["Heading1"]))
+                    story.append(
+                        Paragraph(html.escape(stripped[2:].strip()), styles["Heading1"])
+                    )
                 elif stripped.startswith("## "):
-                    story.append(Paragraph(html.escape(stripped[3:].strip()), styles["Heading2"]))
+                    story.append(
+                        Paragraph(html.escape(stripped[3:].strip()), styles["Heading2"])
+                    )
                 elif stripped.startswith("- ") or stripped.startswith("* "):
-                    story.append(Paragraph("&bull; " + html.escape(stripped[2:].strip()), styles["BodyText"]))
+                    story.append(
+                        Paragraph(
+                            "&bull; " + html.escape(stripped[2:].strip()),
+                            styles["BodyText"],
+                        )
+                    )
                 else:
                     story.append(Paragraph(html.escape(stripped), styles["BodyText"]))
             document.build(story)
@@ -90,19 +105,25 @@ class SkillToolkit:
             ChatMessage(role="user", content=prompt),
         ]
         try:
-            refined = self.clients.openrouter_chat(messages, model=settings.openrouter_model_multimodal_free, temperature=0.2)
+            refined = self.clients.groq_chat(
+                messages, model=settings.groq_model_strong, temperature=0.2
+            )
             return refined.strip() or prompt
         except Exception:  # noqa: BLE001
             return prompt
 
-    def illustrate(self, prompt: str, provider: str = "openrouter") -> Dict[str, Any]:
-        if provider not in {"openrouter", "huggingface"}:
-            raise ValueError("Illustration provider must be 'openrouter' or 'huggingface'.")
+    def illustrate(self, prompt: str, provider: str = "groq") -> Dict[str, Any]:
+        if provider not in {"groq", "huggingface"}:
+            raise ValueError("Illustration provider must be 'groq' or 'huggingface'.")
 
-        refined_prompt = self._refine_image_prompt(prompt) if provider == "openrouter" else prompt
+        refined_prompt = (
+            self._refine_image_prompt(prompt) if provider == "groq" else prompt
+        )
 
         if not settings.huggingface_api_token:
-            fallback_path = self.output_dir / f"{self._slugify(prompt)[:50]}-image-prompt.txt"
+            fallback_path = (
+                self.output_dir / f"{self._slugify(prompt)[:50]}-image-prompt.txt"
+            )
             fallback_path.write_text(refined_prompt, encoding="utf-8")
             return {
                 "status": "fallback",
@@ -121,7 +142,9 @@ class SkillToolkit:
             timeout=180,
         )
         if response.status_code >= 400:
-            fallback_path = self.output_dir / f"{self._slugify(prompt)[:50]}-image-prompt.txt"
+            fallback_path = (
+                self.output_dir / f"{self._slugify(prompt)[:50]}-image-prompt.txt"
+            )
             fallback_path.write_text(refined_prompt, encoding="utf-8")
             return {
                 "status": "fallback",
@@ -134,13 +157,129 @@ class SkillToolkit:
             }
 
         # HF inference for image models usually returns binary image bytes.
-        image_path = self.output_dir / f"{self._slugify(prompt)[:50]}-{model.replace('/', '-')}.png"
+        image_path = (
+            self.output_dir
+            / f"{self._slugify(prompt)[:50]}-{model.replace('/', '-')}.png"
+        )
         image_path.write_bytes(response.content)
         return {
             "status": "ok",
             "provider": provider,
             "model": model,
             "path": str(image_path),
-            "note": "OpenRouter refined the prompt and Hugging Face generated the image artifact.",
+            "note": "Groq refined the prompt and Hugging Face generated the image artifact.",
             "prompt": refined_prompt,
+        }
+
+    def explanation_visual(
+        self,
+        prompt: str,
+        diagram_type: str = "concept_map",
+        theme: str = "modern-3d-education",
+    ) -> Dict[str, Any]:
+        messages = [
+            ChatMessage(
+                role="system",
+                content=(
+                    "You are a visualization architect. Return strict JSON only. "
+                    "Build a valid diagram spec with this shape: "
+                    '{"type":"diagram","diagramType":"...","title":"...","nodes":[...],"edges":[...],"style":{...}}. '
+                    "Use 5-9 nodes, meaningful labels, and relationships that explain the topic clearly."
+                ),
+            ),
+            ChatMessage(
+                role="user",
+                content=(
+                    f"Topic: {prompt}\n"
+                    f"diagramType: {diagram_type}\n"
+                    f"theme: {theme}\n"
+                    "Return JSON only."
+                ),
+            ),
+        ]
+
+        raw = self.clients.groq_chat(
+            messages,
+            model=settings.groq_model_quality,
+            temperature=0.1,
+        )
+
+        parsed: Dict[str, Any] | None = None
+        try:
+            parsed = json.loads(raw.strip())
+        except Exception:
+            match = re.search(r"\{[\s\S]*\}", raw)
+            if match:
+                try:
+                    parsed = json.loads(match.group(0))
+                except Exception:
+                    parsed = None
+
+        if not isinstance(parsed, dict):
+            parsed = {
+                "type": "diagram",
+                "diagramType": diagram_type,
+                "title": "Concept Overview",
+                "subtitle": prompt[:100],
+                "nodes": [
+                    {
+                        "id": "n1",
+                        "type": "concept",
+                        "label": "Problem",
+                        "description": "Core topic",
+                    },
+                    {
+                        "id": "n2",
+                        "type": "process",
+                        "label": "Approach",
+                        "description": "How it works",
+                    },
+                    {
+                        "id": "n3",
+                        "type": "output",
+                        "label": "Outcome",
+                        "description": "Expected result",
+                    },
+                ],
+                "edges": [
+                    {
+                        "source": "n1",
+                        "target": "n2",
+                        "label": "informs",
+                        "type": "smoothstep",
+                        "animated": True,
+                    },
+                    {
+                        "source": "n2",
+                        "target": "n3",
+                        "label": "produces",
+                        "type": "smoothstep",
+                        "animated": True,
+                    },
+                ],
+                "style": {
+                    "theme": theme,
+                    "layout": "hierarchical",
+                    "edgeStyle": "gradient",
+                    "nodeShape": "card",
+                    "animation": "subtle",
+                },
+            }
+
+        parsed["type"] = "diagram"
+        parsed.setdefault("diagramType", diagram_type)
+        parsed.setdefault("style", {})
+        if isinstance(parsed["style"], dict):
+            parsed["style"].setdefault("theme", theme)
+
+        visual_block = (
+            '<visual type="diagram">\n'
+            + json.dumps(parsed, ensure_ascii=True, indent=2)
+            + "\n</visual>"
+        )
+        return {
+            "status": "ok",
+            "type": "diagram",
+            "diagram": parsed,
+            "visual_block": visual_block,
         }

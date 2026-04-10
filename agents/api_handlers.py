@@ -50,14 +50,6 @@ class MultiProviderClients:
         self.groq = (
             Groq(api_key=settings.groq_api_key) if settings.groq_api_key else None
         )
-        self.openrouter = (
-            OpenAI(
-                api_key=settings.openrouter_api_key,
-                base_url=settings.openrouter_base_url,
-            )
-            if settings.openrouter_api_key
-            else None
-        )
         self.sarvam = (
             SarvamAI(api_subscription_key=settings.sarvam_api_key)
             if settings.sarvam_api_key
@@ -82,21 +74,6 @@ class MultiProviderClients:
             messages=cast(Any, self._message_payload(messages)),
         )
         log_usage("groq", model, cast(Any, getattr(response, "usage", None)))
-        return response.choices[0].message.content or ""
-
-    def _chat_via_openrouter(
-        self, messages: List[ChatMessage], model: str, temperature: float
-    ) -> str:
-        if not self.openrouter:
-            raise ProviderError("OpenRouter is not configured. Set OPENROUTER_API_KEY.")
-
-        response = self.openrouter.chat.completions.create(
-            model=model,
-            temperature=temperature,
-            top_p=1,
-            messages=cast(Any, self._message_payload(messages)),
-        )
-        log_usage("openrouter", model, cast(Any, getattr(response, "usage", None)))
         return response.choices[0].message.content or ""
 
     def _chat_via_ollama(self, messages: List[ChatMessage], model: str) -> str:
@@ -125,10 +102,6 @@ class MultiProviderClients:
         errors: List[str] = []
         for provider, model, label in candidates:
             try:
-                if provider == "openrouter":
-                    return self._chat_via_openrouter(
-                        messages, model=model, temperature=temperature
-                    )
                 if provider == "groq":
                     return self._chat_via_groq(
                         messages, model=model, temperature=temperature
@@ -318,14 +291,24 @@ class MultiProviderClients:
         cap = max(1, min(int(cap), 10))
 
         with DDGS() as search_client:
-            rows = list(
-                search_client.text(
-                    keywords=query,
-                    region=settings.ddg_region,
-                    safesearch=settings.ddg_safesearch,
-                    max_results=cap,
+            try:
+                rows = list(
+                    search_client.text(
+                        query=query,
+                        region=settings.ddg_region,
+                        safesearch=settings.ddg_safesearch,
+                        max_results=cap,
+                    )
                 )
-            )
+            except TypeError:
+                rows = list(
+                    search_client.text(
+                        keywords=query,
+                        region=settings.ddg_region,
+                        safesearch=settings.ddg_safesearch,
+                        max_results=cap,
+                    )
+                )
 
         results: List[Dict[str, str]] = []
         for row in rows:
@@ -352,27 +335,6 @@ class MultiProviderClients:
             messages,
             [
                 ("groq", model or settings.research_model_groq, "groq"),
-                ("openrouter", settings.openrouter_model_auto_free, "openrouter"),
-                ("ollama", settings.ollama_fallback_model, "ollama"),
-            ],
-            temperature,
-        )
-
-    def openrouter_chat(
-        self,
-        messages: List[ChatMessage],
-        model: str | None = None,
-        temperature: float = 0.0,
-    ) -> str:
-        return self._run_chat_fallback(
-            messages,
-            [
-                ("groq", settings.groq_model_fast, "groq"),
-                (
-                    "openrouter",
-                    model or settings.analysis_model_openrouter,
-                    "openrouter",
-                ),
                 ("ollama", settings.ollama_fallback_model, "ollama"),
             ],
             temperature,
@@ -383,7 +345,6 @@ class MultiProviderClients:
             messages,
             [
                 ("ollama", model or settings.ollama_fallback_model, "ollama"),
-                ("openrouter", settings.openrouter_model_auto_free, "openrouter"),
                 ("groq", settings.groq_model_fast, "groq"),
             ],
             temperature=0.0,

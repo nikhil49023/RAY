@@ -16,7 +16,6 @@ class FallbackPolicy:
         self.primary_model = settings.litellm_model
         self.fallback_models = [
             settings.groq_model_quality,
-            settings.openrouter_model_auto_free,
             settings.ollama_fallback_model
         ]
     

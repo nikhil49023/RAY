@@ -57,14 +57,16 @@ def retry_with_backoff(
                 except retryable_exceptions as e:
                     last_exception = e
                     if attempt < max_retries:
-                        delay = min(base_delay * (exponential_base ** attempt), max_delay)
+                        delay = min(base_delay * (exponential_base**attempt), max_delay)
                         logger.warning(
                             f"LLM call failed (attempt {attempt + 1}/{max_retries + 1}): {e}. "
                             f"Retrying in {delay:.1f}s..."
                         )
                         time.sleep(delay)
                     else:
-                        logger.error(f"LLM call failed after {max_retries + 1} attempts: {e}")
+                        logger.error(
+                            f"LLM call failed after {max_retries + 1} attempts: {e}"
+                        )
             raise last_exception
 
         return wrapper
@@ -73,24 +75,22 @@ def retry_with_backoff(
 
 
 class LLMFactory:
-
     # ── Available Models Registry ─────────────────────────────────────────── #
     # Only models that work with your actual API keys
     MODELS = {
         # Groq (free, fast) — primary
-        "groq/llama-3.3-70b-versatile":       "Llama 3.3 70B (Groq)",
-        "groq/llama-3.1-8b-instant":          "Llama 3.1 8B Fast (Groq)",
-        "groq/llama-4-scout-17b":             "Llama 4 Scout 17B (Groq)",
+        "groq/llama-3.3-70b-versatile": "Llama 3.3 70B (Groq)",
+        "groq/llama-3.1-8b-instant": "Llama 3.1 8B Fast (Groq)",
+        "groq/llama-4-scout-17b": "Llama 4 Scout 17B (Groq)",
         "groq/deepseek-r1-distill-llama-70b": "DeepSeek R1 70B (Groq)",
-        "groq/mixtral-8x7b-32768":            "Mixtral 8x7B (Groq)",
-        "groq/openai/gpt-oss-20b":            "GPT OSS 20B (Groq)",
-        "groq/openai/gpt-oss-120b":           "GPT OSS 120B (Groq)",
-        # OpenRouter (free tier)
+        "groq/mixtral-8x7b-32768": "Mixtral 8x7B (Groq)",
+        "groq/openai/gpt-oss-20b": "GPT OSS 20B (Groq)",
+        "groq/openai/gpt-oss-120b": "GPT OSS 120B (Groq)",
         # Sarvam (Indian AI)
-        "sarvam/sarvam-m1":                    "Sarvam M1 (Sarvam AI)",
+        "sarvam/sarvam-m1": "Sarvam M1 (Sarvam AI)",
         # Ollama (local)
-        "ollama/deepseek-r1:8b":              "DeepSeek R1 8B (Local)",
-        "ollama/llama3":                       "Llama 3 (Local)",
+        "ollama/deepseek-r1:8b": "DeepSeek R1 8B (Local)",
+        "ollama/llama3": "Llama 3 (Local)",
     }
 
     MODEL_INFO = {
@@ -163,13 +163,14 @@ class LLMFactory:
             return bool(os.getenv("GROQ_API_KEY"))
         if prefix == "sarvam":
             return bool(os.getenv("SARVAM_API_KEY"))
-            return bool(os.getenv("OPENROUTER_API_KEY"))
         if prefix == "ollama":
             return True
         return False
 
     @staticmethod
-    @retry_with_backoff(max_retries=2, base_delay=0.5, retryable_exceptions=(ValueError, ImportError))
+    @retry_with_backoff(
+        max_retries=2, base_delay=0.5, retryable_exceptions=(ValueError, ImportError)
+    )
     def get_model(
         model_id: str = "groq/llama-3.3-70b-versatile",
         temperature: float = 0.1,
@@ -218,6 +219,7 @@ class LLMFactory:
         # ── Sarvam (OpenAI-compatible) ────────────────────────────────────
         if mid.startswith("sarvam/"):
             from langchain_openai import ChatOpenAI
+
             key = os.getenv("SARVAM_API_KEY", "")
             if not key:
                 logger.error("SARVAM_API_KEY not configured")
@@ -234,24 +236,26 @@ class LLMFactory:
         # ── Ollama (local) ────────────────────────────────────────────────
         if mid.startswith("ollama/"):
             from langchain_community.chat_models import ChatOllama
+
             base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-            logger.debug(f"Configuring Ollama model: {model_id.split('/', 1)[1]} at {base_url}")
+            logger.debug(
+                f"Configuring Ollama model: {model_id.split('/', 1)[1]} at {base_url}"
+            )
             return ChatOllama(
                 model=model_id.split("/", 1)[1],
                 base_url=base_url,
                 temperature=temperature,
             )
 
-        # ── OpenRouter / fallback ─────────────────────────────────────────
-        from langchain_openai import ChatOpenAI
-        key = os.getenv("OPENROUTER_API_KEY", "")
+        # ── Default / fallback ─────────────────────────────────────────
+        from langchain_groq import ChatGroq
+
+        key = os.getenv("GROQ_API_KEY", "")
         if not key:
-            logger.error("OPENROUTER_API_KEY not configured")
-            raise ValueError("OPENROUTER_API_KEY not set. Add it to .env or Settings.")
-        logger.debug(f"Configuring OpenRouter model: {actual}")
-        return ChatOpenAI(
+            raise ValueError("GROQ_API_KEY not set.")
+        return ChatGroq(
             api_key=key,
-            model=actual,
+            model=model_id.split("/", 1)[1] if "/" in model_id else model_id,
             temperature=temperature,
             max_tokens=max_tokens,
         )
@@ -273,13 +277,17 @@ class LLMFactory:
         entries: list[dict] = []
         for model_id in model_ids:
             meta = cls.MODEL_INFO.get(model_id, {})
-            entries.append({
-                "id": model_id,
-                "label": cls.MODELS.get(model_id, model_id),
-                "provider": meta.get("provider", model_id.split("/", 1)[0].title()),
-                "specialty": meta.get("specialty", "General assistant"),
-                "description": meta.get("description", "General-purpose chat and task assistance."),
-                "features": meta.get("features", ["Chat"]),
-                "is_default": model_id == default_model,
-            })
+            entries.append(
+                {
+                    "id": model_id,
+                    "label": cls.MODELS.get(model_id, model_id),
+                    "provider": meta.get("provider", model_id.split("/", 1)[0].title()),
+                    "specialty": meta.get("specialty", "General assistant"),
+                    "description": meta.get(
+                        "description", "General-purpose chat and task assistance."
+                    ),
+                    "features": meta.get("features", ["Chat"]),
+                    "is_default": model_id == default_model,
+                }
+            )
         return entries

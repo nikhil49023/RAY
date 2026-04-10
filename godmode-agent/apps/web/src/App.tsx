@@ -2793,10 +2793,10 @@ export default function App() {
             <div className="messages-inner">
               {messages.length === 0 && !isLoading && (
                 <div className="welcome">
-                  <div className="welcome-badge">Minimal chat workspace</div>
+                  <div className="welcome-badge">Production Agent Workspace</div>
                   <h1>RAY</h1>
                   <p>
-                    Ask a question, keep the response text-first by default, and enable visuals only for answers that benefit from charts, diagrams, or formatted briefs.
+                    Retrieval-first orchestration with long-chat memory, adaptive visuals, and local-first execution. Keep responses text-first or enable diagrams when they improve clarity.
                   </p>
                   <div className="welcome-cards">
                     <div className="welcome-card" onClick={() => quickPrompt('Compare top reasoning models in plain markdown')}>
@@ -2999,12 +2999,6 @@ export default function App() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">OpenRouter API Key</label>
-                    <input
-                      type="password"
-                      className="form-input"
-                      placeholder="sk-or-..."
-                    />
                   </div>
 
                   <div className="form-group">

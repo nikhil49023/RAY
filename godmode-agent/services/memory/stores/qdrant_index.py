@@ -19,17 +19,41 @@ class QdrantIndex:
         self.collection_name = collection_name
         self._client = None
         self._available = False
-        self._vector_size = 512
+        self._vector_size = 768
 
         try:
             self._client = QdrantClient(host=host, port=port)
-            self._client.get_collection(collection_name=collection_name)
+            self._ensure_collection_exists(vector_size=self._vector_size)
             self._available = True
             logger.info(f"Connected to Qdrant collection: {collection_name}")
         except Exception as e:
             logger.warning(f"Qdrant not available for {collection_name}: {e}")
             self._client = None
             self._available = False
+
+    def _ensure_collection_exists(self, vector_size: int) -> None:
+        """Create the collection when missing; no-op when it already exists."""
+        if not self._client:
+            raise RuntimeError("Qdrant client is not initialized")
+
+        try:
+            self._client.get_collection(collection_name=self.collection_name)
+            return
+        except Exception:
+            pass
+
+        logger.info(
+            "Qdrant collection '%s' missing; creating with vector size %s",
+            self.collection_name,
+            vector_size,
+        )
+        self._client.create_collection(
+            collection_name=self.collection_name,
+            vectors_config=models.VectorParams(
+                size=vector_size,
+                distance=models.Distance.COSINE,
+            ),
+        )
 
     def create_collection(self, vector_size: int = 512):
         """Initializes the collection with the correct vector size."""
@@ -70,10 +94,21 @@ class QdrantIndex:
             logger.debug("Qdrant unavailable, returning empty search results")
             return []
         try:
+            if hasattr(self._client, "query_points"):
+                response = self._client.query_points(
+                    collection_name=self.collection_name,
+                    query=vector,
+                    limit=limit,
+                )
+                points = getattr(response, "points", response) or []
+                return [getattr(hit, "payload", {}) or {} for hit in points]
+
             hits = self._client.search(
-                collection_name=self.collection_name, query_vector=vector, limit=limit
+                collection_name=self.collection_name,
+                query_vector=vector,
+                limit=limit,
             )
-            return [hit.payload for hit in hits]
+            return [getattr(hit, "payload", {}) or {} for hit in hits]
         except Exception as e:
             logger.error(f"Search failed for {self.collection_name}: {e}")
             self._available = False

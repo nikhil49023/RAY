@@ -46,18 +46,36 @@ class SemanticRouter:
             score += 10
 
         # Long-context oriented prompts.
-        if any(k in prompt.lower() for k in ["summarize this document", "analyze this report", "full context"]):
+        if any(
+            k in prompt.lower()
+            for k in ["summarize this document", "analyze this report", "full context"]
+        ):
             score += 5
 
         return score
 
     def _intent(self, prompt: str) -> str:
         lower = prompt.lower()
-        if re.search(r"[\u0900-\u097f]", prompt) or any(k in lower for k in ["hinglish", "hindi", "indian law", "ipc"]):
+        if re.search(r"[\u0900-\u097f]", prompt) or any(
+            k in lower for k in ["hinglish", "hindi", "indian law", "ipc"]
+        ):
             return "regional"
-        if any(k in lower for k in ["code", "debug", "python", "javascript", "bug", "refactor", "compile"]):
+        if any(
+            k in lower
+            for k in [
+                "code",
+                "debug",
+                "python",
+                "javascript",
+                "bug",
+                "refactor",
+                "compile",
+            ]
+        ):
             return "coding"
-        if any(k in lower for k in ["image", "video", "diagram", "vision", "multimodal"]):
+        if any(
+            k in lower for k in ["image", "video", "diagram", "vision", "multimodal"]
+        ):
             return "multimodal"
         if any(k in lower for k in ["creative", "poem", "story", "rewrite"]):
             return "creative"
@@ -81,11 +99,12 @@ class SemanticRouter:
 
         # Rule B: coding + high complexity.
         if intent == "coding" or complexity > 15:
-            use_ensemble = (prefer_ensemble or settings.enable_ensemble) and complexity >= settings.ensemble_threshold
+            use_ensemble = (
+                prefer_ensemble or settings.enable_ensemble
+            ) and complexity >= settings.ensemble_threshold
             ensemble_models = [
                 f"groq:{settings.groq_model_strong}",
                 f"groq:{settings.groq_model_quality}",
-                f"openrouter:{settings.openrouter_model_strong_free}",
             ]
             return RouteDecision(
                 intent=intent,
@@ -102,11 +121,11 @@ class SemanticRouter:
             return RouteDecision(
                 intent=intent,
                 complexity=complexity,
-                primary_provider="openrouter",
-                primary_model=settings.openrouter_model_multimodal_free,
+                primary_provider="groq",
+                primary_model=settings.groq_model_strong,
                 use_ensemble=False,
                 ensemble_models=[],
-                reason="Multimodal intent detected; route to free multimodal option.",
+                reason="Multimodal intent detected; route to Groq.",
             )
 
         # Rule C: general low complexity.

@@ -16,7 +16,6 @@ def _as_bool(value: str, default: bool = False) -> bool:
 @dataclass(frozen=True)
 class Settings:
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
-    openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
     firecrawl_api_key: str = os.getenv("FIRECRAWL_API_KEY", "")
     firecrawl_base_url: str = os.getenv("FIRECRAWL_BASE_URL", "http://localhost:3002")
     firecrawl_strategy: str = os.getenv("FIRECRAWL_STRATEGY", "self_hosted_first")
@@ -26,9 +25,6 @@ class Settings:
     sarvam_api_key: str = os.getenv("SARVAM_API_KEY", "")
     huggingface_api_token: str = os.getenv("HUGGINGFACE_API_TOKEN", "")
 
-    openrouter_base_url: str = os.getenv(
-        "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
-    )
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
     # LiteLLM router settings for agentic orchestration
@@ -38,12 +34,6 @@ class Settings:
 
     research_model_groq: str = os.getenv(
         "RESEARCH_MODEL_GROQ", "llama-3.3-70b-versatile"
-    )
-    analysis_model_openrouter: str = os.getenv(
-        "ANALYSIS_MODEL_OPENROUTER", "llama-3.3-70b-versatile"
-    )
-    visual_model_openrouter: str = os.getenv(
-        "VISUAL_MODEL_OPENROUTER", "llama-3.3-70b-versatile"
     )
     translation_model_sarvam: str = os.getenv(
         "TRANSLATION_MODEL_SARVAM", "sarvam-translate"
@@ -63,22 +53,6 @@ class Settings:
         "GROQ_MODEL_LONG_CONTEXT", "llama-4-scout-17b"
     )
 
-    # OpenRouter free-tier options
-    openrouter_model_strong_free: str = os.getenv(
-        "OPENROUTER_MODEL_STRONG_FREE", "nvidia/nemotron-3-super-120b"
-    )
-    openrouter_model_coding_free: str = os.getenv(
-        "OPENROUTER_MODEL_CODING_FREE", "mistralai/devstral-2512"
-    )
-    openrouter_model_fast_free: str = os.getenv(
-        "OPENROUTER_MODEL_FAST_FREE", "stepfun/step-3.5-flash"
-    )
-    openrouter_model_multimodal_free: str = os.getenv(
-        "OPENROUTER_MODEL_MULTIMODAL_FREE", "google/gemma-3-27b-it"
-    )
-    openrouter_model_auto_free: str = os.getenv(
-        "OPENROUTER_MODEL_AUTO_FREE", "openrouter/free"
-    )
 
     # Sarvam options
     sarvam_model_flagship: str = os.getenv("SARVAM_MODEL_FLAGSHIP", "sarvam-105b")

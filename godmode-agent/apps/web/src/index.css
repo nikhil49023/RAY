@@ -20,6 +20,9 @@
   --accent-tertiary: #F472B6;
   --accent-info: #38BDF8;
   --accent-warning: #FBBF24;
+  --gold-warm: #F8C45D;
+  --indigo-deep: #0B1324;
+  --temple-red: #D14B5A;
   
   --accent-primary-soft: rgba(110, 231, 183, 0.12);
   --accent-secondary-soft: rgba(167, 139, 250, 0.12);
@@ -45,6 +48,7 @@
   --radius-xs: 6px;
   --radius-sm: 10px;
   --radius-md: 14px;
+  --border-radius-md: 14px;
   --radius-lg: 20px;
   --radius-xl: 28px;
   
@@ -3524,4 +3528,159 @@ body.is-resizing {
   background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
   color: var(--surface-primary);
   border-radius: 50%;
+}
+
+/* Final visual system override (keeps earlier legacy blocks harmless) */
+:root {
+  --surface-primary: #0a0f1a;
+  --surface-elevated: #101726;
+  --surface-card: rgba(16, 23, 38, 0.88);
+  --surface-glass: rgba(16, 23, 38, 0.72);
+  --accent-primary: #2dd4bf;
+  --accent-secondary: #60a5fa;
+  --accent-tertiary: #f59e0b;
+  --text-primary: #edf2ff;
+  --text-secondary: #b7c2d8;
+  --text-tertiary: #8d9ab3;
+  --border-subtle: rgba(148, 163, 184, 0.16);
+  --border-default: rgba(148, 163, 184, 0.24);
+}
+
+body {
+  background:
+    radial-gradient(1200px 500px at -10% -10%, rgba(45, 212, 191, 0.12), transparent 55%),
+    radial-gradient(900px 420px at 110% 0%, rgba(96, 165, 250, 0.12), transparent 55%),
+    linear-gradient(180deg, #0a0f1a 0%, #0b1220 100%);
+}
+
+.sidebar,
+.artifact-panel,
+.topbar,
+.modal,
+.input-box,
+.structured-card,
+.thinking-panel,
+.evidence-rail,
+.user-body,
+.settings-note,
+.model-spotlight {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.sidebar {
+  background: linear-gradient(180deg, rgba(14, 22, 38, 0.92), rgba(10, 16, 30, 0.9));
+  border-right: 1px solid var(--border-default);
+}
+
+.topbar {
+  background: rgba(10, 15, 26, 0.84);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.model-spotlight {
+  margin: 14px 22px 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border-default);
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.11), rgba(96, 165, 250, 0.1));
+}
+
+.logo-orb {
+  background: linear-gradient(135deg, #2dd4bf, #60a5fa);
+  color: #07101f;
+  border-radius: 12px;
+}
+
+.welcome-badge {
+  background: rgba(45, 212, 191, 0.12);
+  border-color: rgba(45, 212, 191, 0.28);
+  color: #9df5ea;
+}
+
+.welcome h1 {
+  background: linear-gradient(135deg, #dbe8ff 0%, #8be9db 45%, #7bb8ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.welcome-cards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.welcome-card {
+  background: linear-gradient(165deg, rgba(18, 27, 44, 0.9), rgba(13, 19, 34, 0.85));
+  border: 1px solid var(--border-subtle);
+}
+
+.welcome-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(96, 165, 250, 0.35);
+  box-shadow: 0 12px 30px rgba(2, 8, 24, 0.45);
+}
+
+.message-avatar {
+  border-radius: 12px;
+}
+
+.message-avatar.user {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(249, 115, 22, 0.18));
+  color: #ffe6bb;
+}
+
+.message-avatar.assistant {
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.24), rgba(96, 165, 250, 0.18));
+  color: #d8f7ff;
+}
+
+.user-body {
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(15, 23, 42, 0.88));
+  border: 1px solid rgba(245, 158, 11, 0.22);
+}
+
+.assistant-body {
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(19, 29, 48, 0.9), rgba(12, 20, 35, 0.88));
+  border: 1px solid var(--border-subtle);
+}
+
+.input-box {
+  background: linear-gradient(180deg, rgba(16, 23, 38, 0.95), rgba(13, 19, 33, 0.95));
+  border: 1px solid rgba(96, 165, 250, 0.22);
+}
+
+.composer-toggle.active,
+.btn-primary,
+.send-btn {
+  background: linear-gradient(135deg, #2dd4bf, #60a5fa);
+  color: #061021;
+}
+
+.structured-card-header {
+  background: linear-gradient(135deg, rgba(16, 23, 38, 0.95), rgba(24, 32, 50, 0.9));
+  border-bottom-color: var(--border-subtle);
+}
+
+.source-chip {
+  background: rgba(45, 212, 191, 0.14);
+  color: #a3fff2;
+  border-color: rgba(45, 212, 191, 0.3);
+}
+
+.source-score {
+  background: rgba(245, 158, 11, 0.14);
+  color: #ffd68e;
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+.modal {
+  background: linear-gradient(180deg, rgba(14, 21, 36, 0.97), rgba(9, 15, 27, 0.96));
+}
+
+@media (max-width: 900px) {
+  .welcome-cards {
+    grid-template-columns: 1fr;
+  }
 }

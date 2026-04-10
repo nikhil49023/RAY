@@ -117,7 +117,7 @@ class PersonalAgent:
         prefer_ensemble: bool = False,
         system_prompt: str | None = None,
     ) -> Dict[str, str]:
-        """Dynamic semantic routing across Groq/OpenRouter/Sarvam strategy."""
+        """Dynamic semantic routing across Groq/Sarvam strategy."""
         decision = self.router.decide(prompt, prefer_ensemble=prefer_ensemble)
 
         resolved_system_prompt = (
@@ -134,27 +134,19 @@ class PersonalAgent:
         if decision.use_ensemble and decision.ensemble_models:
             drafts = []
             for tagged_model in decision.ensemble_models:
-                provider, model = tagged_model.split(":", 1)
-                if provider == "openrouter":
-                    drafts.append(
-                        self.clients.openrouter_chat(
-                            messages, model=model, temperature=0.0
-                        )
-                    )
-                else:
-                    drafts.append(
-                        self.clients.groq_chat(messages, model=model, temperature=0.0)
-                    )
+                _, model = tagged_model.split(":", 1)
+                drafts.append(
+                    self.clients.groq_chat(messages, model=model, temperature=0.0)
+                )
 
+            numbered_drafts = "\n\n".join(
+                f"Draft {idx}:\n{draft}" for idx, draft in enumerate(drafts, start=1)
+            )
             synthesis_prompt = (
                 "Original prompt:\n"
                 + prompt
-                + "\n\nDraft 1:\n"
-                + drafts[0]
-                + "\n\nDraft 2:\n"
-                + drafts[1]
-                + "\n\nDraft 3:\n"
-                + drafts[2]
+                + "\n\n"
+                + numbered_drafts
                 + "\n\nCombine the best parts into one coherent final answer and resolve contradictions."
             )
             final_answer = self.clients.groq_chat(
@@ -169,19 +161,17 @@ class PersonalAgent:
                 temperature=0.0,
             )
         else:
-            if decision.primary_provider == "openrouter":
-                final_answer = self.clients.openrouter_chat(
-                    messages, model=decision.primary_model, temperature=0.0
-                )
-            else:
-                final_answer = self.clients.groq_chat(
-                    messages, model=decision.primary_model, temperature=0.0
-                )
+            # Route all primary calls via Groq
+            final_answer = self.clients.groq_chat(
+                messages, model=decision.primary_model, temperature=0.0
+            )
 
         return {
             "route_intent": decision.intent,
             "route_complexity": str(decision.complexity),
-            "route_provider": decision.primary_provider,
+            "route_provider": "groq"
+            if decision.primary_provider == "groq"
+            else decision.primary_provider,
             "route_model": decision.primary_model,
             "route_reason": decision.reason,
             "answer": final_answer,
@@ -226,6 +216,19 @@ class PersonalAgent:
     def illustrate(self, prompt: str, provider: str = "huggingface") -> Dict[str, str]:
         """Generate an image artifact through a free hosted image API."""
         return self.skills.illustrate(prompt=prompt, provider=provider)
+
+    def explain_visual(
+        self,
+        prompt: str,
+        diagram_type: str = "concept_map",
+        theme: str = "modern-3d-education",
+    ) -> Dict[str, str]:
+        """Generate a robust visual explanation block for the UI renderer."""
+        return self.skills.explanation_visual(
+            prompt=prompt,
+            diagram_type=diagram_type,
+            theme=theme,
+        )
 
 
 if __name__ == "__main__":

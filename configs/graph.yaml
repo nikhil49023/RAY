@@ -45,5 +45,4 @@ models:
   # Fallback chain
   fallbacks:
     - "llama-3.3-70b-versatile"
-    - "openrouter/free"
     - "deepseek-r1:8b"

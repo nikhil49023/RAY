@@ -21,7 +21,6 @@ from agents.skills import SkillToolkit
 
 SECRET_FIELDS = [
     ("GROQ_API_KEY", "Groq API Key", "Used for Groq chat and fallback reasoning."),
-    ("OPENROUTER_API_KEY", "OpenRouter API Key", "Used for OpenRouter-compatible chat calls."),
     ("LITELLM_MASTER_KEY", "LiteLLM Master Key", "Master key used by the local LiteLLM router service."),
     ("LITELLM_API_KEY", "LiteLLM Client Key", "Used by CrewAI/LangChain against your local LiteLLM router."),
     ("FIRECRAWL_API_KEY", "Firecrawl API Key", "Used for scraping and crawling pages."),
@@ -32,7 +31,6 @@ SECRET_FIELDS = [
 
 TEXT_FIELDS = [
     ("FIRECRAWL_BASE_URL", "Firecrawl Base URL", "Base URL for the Firecrawl API or self-hosted service."),
-    ("OPENROUTER_BASE_URL", "OpenRouter Base URL", "OpenRouter-compatible endpoint."),
     ("OLLAMA_BASE_URL", "Ollama Base URL", "Local Ollama endpoint used by the Python agent."),
     ("LITELLM_BASE_URL", "LiteLLM Base URL", "OpenAI-compatible local LiteLLM endpoint."),
     ("LITELLM_MODEL", "LiteLLM Model Alias", "Model alias used by CrewAI/LangChain (for example premium-thinker)."),
@@ -153,7 +151,6 @@ def render_settings_tab(current: dict[str, str]) -> None:
     status_columns = st.columns(3)
     with status_columns[0]:
         st.metric("Groq key", "set" if current.get("GROQ_API_KEY") else "missing")
-        st.metric("OpenRouter key", "set" if current.get("OPENROUTER_API_KEY") else "missing")
     with status_columns[1]:
         st.metric("LiteLLM key", "set" if current.get("LITELLM_API_KEY") else "missing")
         st.metric("Firecrawl key", "set" if current.get("FIRECRAWL_API_KEY") else "missing")

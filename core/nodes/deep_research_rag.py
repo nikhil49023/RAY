@@ -42,31 +42,43 @@ DEFAULT_CRAWLER_CONFIG = CrawlerRunConfig(
     override_navigator=True,
 )
 
+
 async def _crawl_urls_async(urls: List[str]) -> List[Dict[str, Any]]:
     """Asynchronously crawl multiple URLs using Crawl4AI."""
     results = []
-    
+
     async with AsyncWebCrawler(config=BROWSER_CONFIG) as crawler:
         for url in urls:
             try:
                 logger.info(f"Crawling URL: {url}")
                 result = await crawler.arun(url=url, config=DEFAULT_CRAWLER_CONFIG)
-                
-                if result.success and result.markdown:
-                    results.append({
-                        "content": result.markdown_raw or result.markdown,
-                        "url": url,
-                        "title": getattr(result, 'title', '') or urlparse(url).netloc,
-                        "markdown": result.markdown_raw or result.markdown,
-                    })
+                markdown = (
+                    getattr(result, "markdown_raw", None)
+                    or getattr(result, "markdown", None)
+                    or ""
+                )
+
+                if result.success and markdown:
+                    results.append(
+                        {
+                            "content": markdown,
+                            "url": url,
+                            "title": getattr(result, "title", "")
+                            or urlparse(url).netloc,
+                            "markdown": markdown,
+                        }
+                    )
                 else:
-                    logger.warning(f"Failed to crawl {url}: {result.error_message if hasattr(result, 'error_message') else 'Unknown error'}")
-                    
+                    logger.warning(
+                        f"Failed to crawl {url}: {result.error_message if hasattr(result, 'error_message') else 'Unknown error'}"
+                    )
+
             except Exception as e:
                 logger.error(f"Error crawling {url}: {str(e)}")
                 continue
-    
+
     return results
+
 
 def _summarize_scraped_pages(
     state: AgentState, scraped_data: List[Dict[str, str]]
@@ -100,6 +112,7 @@ def _summarize_scraped_pages(
     )
     return str(response.content).strip()
 
+
 def deep_research_rag(state: AgentState) -> dict:
     """
     Perform deep research using Crawl4AI.
@@ -125,45 +138,68 @@ def deep_research_rag(state: AgentState) -> dict:
 
     # Get search results
     try:
-        # Assuming MultiProviderClients is accessible via path
-        from services.agent_backends import MultiProviderClients
+        from agents.api_handlers import MultiProviderClients
+
         client = MultiProviderClients()
         search_results = client.search_web(query, max_results=8)
         raw_items = []
         for item in search_results:
             url = item.get("url")
             if url:
-                raw_items.append({
-                    "url": url,
-                    "title": item.get("title", ""),
-                    "description": item.get("content", "")
-                })
+                raw_items.append(
+                    {
+                        "url": url,
+                        "title": item.get("title", ""),
+                        "description": item.get("snippet", ""),
+                    }
+                )
     except ImportError as e:
         logger.error(f"Failed to import MultiProviderClients: {e}")
         return {
             "evidence": [],
             "current_task": "Deep research: Backend import failed",
-            "thinking_log": [{"node": "deep_research", "title": "Crawl4AI deep research failed", "detail": "Backend import failed", "provider": "crawl4ai"}],
+            "thinking_log": [
+                {
+                    "node": "deep_research",
+                    "title": "Crawl4AI deep research failed",
+                    "detail": "Backend import failed",
+                    "provider": "crawl4ai",
+                }
+            ],
         }
     except Exception as e:
         logger.error(f"Search failed: {e}")
         return {
             "evidence": [],
             "current_task": "Deep research: Search failed",
-            "thinking_log": [{"node": "deep_research", "title": "Crawl4AI deep research failed", "detail": f"Search failed: {e}", "provider": "crawl4ai"}],
+            "thinking_log": [
+                {
+                    "node": "deep_research",
+                    "title": "Crawl4AI deep research failed",
+                    "detail": f"Search failed: {e}",
+                    "provider": "crawl4ai",
+                }
+            ],
         }
 
     candidate_urls = [item["url"] for item in raw_items][:MAX_SCRAPED_URLS]
-    
+
     if not candidate_urls:
-         return {
+        return {
             "evidence": [],
             "current_task": "Deep research: No candidate URLs",
-            "thinking_log": [{"node": "deep_research", "title": "Crawl4AI deep research failed", "detail": "No URLs found", "provider": "crawl4ai"}],
+            "thinking_log": [
+                {
+                    "node": "deep_research",
+                    "title": "Crawl4AI deep research failed",
+                    "detail": "No URLs found",
+                    "provider": "crawl4ai",
+                }
+            ],
         }
 
     logger.info(f"Scraping {len(candidate_urls)} URLs with Crawl4AI")
-    
+
     try:
         scraped_data = asyncio.run(_crawl_urls_async(candidate_urls))
     except Exception as e:
@@ -219,8 +255,12 @@ def deep_research_rag(state: AgentState) -> dict:
         "thinking_log": [
             {
                 "node": "deep_research",
-                "title": "Crawl4AI deep research completed" if evidence else "Crawl4AI deep research failed",
-                "detail": f"Scraped {len(scraped_data)} pages, and reranked {len(evidence)} pages with ReLU." if evidence else "No results returned.",
+                "title": "Crawl4AI deep research completed"
+                if evidence
+                else "Crawl4AI deep research failed",
+                "detail": f"Scraped {len(scraped_data)} pages, and reranked {len(evidence)} pages with ReLU."
+                if evidence
+                else "No results returned.",
                 "provider": "crawl4ai",
                 "result_count": len(evidence),
             }
